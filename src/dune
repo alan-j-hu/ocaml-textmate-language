@@ -1,0 +1,4 @@
+(library
+  (name textmate_highlight)
+  (public_name textmate-highlight)
+  (libraries lambdasoup pcre plist-xml))
