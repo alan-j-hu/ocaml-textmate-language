@@ -254,7 +254,7 @@ module type RENDERER = sig
   type line
   type block
 
-  val create_span : string option -> int -> int -> string -> span
+  val create_span : string option -> string -> span
   val create_line : span list -> line
   val create_block : line list -> block
 end
@@ -271,22 +271,27 @@ module Make (R : RENDERER) = struct
   type line = R.line
   type block = R.block
 
+  let create_span name i j line =
+    assert (j >= i);
+    let inner_text = String.sub line i (j - i) in
+    R.create_span name inner_text
+
   let rec highlight_tokens stack i acc line = function
     | [] ->
        let name = match stack with
          | [] -> None
          | x :: _ -> x.delim_name
        in
-       let span = R.create_span name i (String.length line) line in
+       let span = create_span name i (String.length line) line in
        List.rev (span :: acc)
     | Span(name, j) :: toks ->
-       let span = R.create_span name i j line in
+       let span = create_span name i j line in
        highlight_tokens stack j (span :: acc) line toks
     | Delim_open(d, j) :: toks ->
-       let span = R.create_span d.delim_name i j line in
+       let span = create_span d.delim_name i j line in
        highlight_tokens stack j (span :: acc) line toks
     | Delim_close(d, j) :: toks ->
-       let span = R.create_span d.delim_name i j line in
+       let span = create_span d.delim_name i j line in
        highlight_tokens stack j (span :: acc) line toks
 
   (** Maps over the list while keeping track of some state.

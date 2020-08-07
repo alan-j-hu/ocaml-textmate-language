@@ -17,6 +17,17 @@ grammars.")
     (plist-xml (< 0.2))))
 
 (package
+  (name textmate-highlight-ansi)
+  (synopsis "Syntax highlighting with TextMate grammars")
+  (description "This library generates ANSI highlighting from TextMate
+grammars.")
+  (depends
+    (ANSITerminal (and (>= 0.8.2) (< 0.9)))
+    (odoc :with-doc)
+    (textmate-highlight (< 0.2))))
+
+
+(package
   (name textmate-highlight-html)
   (synopsis "Syntax highlighting with TextMate grammars")
   (description "This library generates highlighted HTML fragments from TextMate

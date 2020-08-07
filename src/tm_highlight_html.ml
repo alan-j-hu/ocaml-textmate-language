@@ -13,9 +13,7 @@ module Renderer : Tm_highlight.RENDERER with type block = Soup.element Soup.node
   type line = Soup.element Soup.node
   type block = Soup.element Soup.node
 
-  let create_span name i j line =
-    assert (j >= i);
-    let inner_text = String.sub line i (j - i) in
+  let create_span name inner_text =
     let classes = Option.map get_classes name in
     match classes with
     | None -> Node (Soup.create_text inner_text)

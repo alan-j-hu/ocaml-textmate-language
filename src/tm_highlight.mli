@@ -19,10 +19,9 @@ module type RENDERER = sig
   type line
   type block
 
-  val create_span : string option -> int -> int -> string -> span
-  (** [create_span desc start finish line] creates a span of highlighted
-      code belonging to the token category [desc] for the substring of [line]
-      in index range \[[start], [finish]) *)
+  val create_span : string option -> string -> span
+  (** [create_span desc token] creates a span of highlighted code containing
+      [token] belonging to the token category [desc]. *)
 
   val create_line : span list -> line
   (** [create_line spans] creates a highlighted line of code from the given

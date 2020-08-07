@@ -1,4 +1,4 @@
-module H = Tm_highlight.Make(Tm_highlight_html.Renderer)
+module H = Tm_highlight.Make(Tm_highlight_ansi.Renderer)
 
 let () =
   if Array.length Sys.argv < 2 then (
@@ -13,5 +13,4 @@ let () =
     let grammar = Tm_highlight.of_plist_exn plist in
     read_line ()
     |> H.highlight_block grammar
-    |> Soup.pretty_print
-    |> print_endline
+    |> Tm_highlight_ansi.print_block ANSITerminal.print_string
