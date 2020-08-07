@@ -1,3 +1,5 @@
+module H = Tm_highlight.Make(Tm_highlight_html.Renderer)
+
 let () =
   if Array.length Sys.argv < 2 then (
     prerr_endline "No grammar file specified.";
@@ -10,6 +12,6 @@ let () =
     in
     let grammar = Tm_highlight.of_plist_exn plist in
     read_line ()
-    |> Tm_highlight.highlight_block grammar
+    |> H.highlight_block grammar
     |> Soup.pretty_print
     |> print_endline

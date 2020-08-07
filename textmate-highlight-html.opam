@@ -12,9 +12,9 @@ homepage: "https://github.com/dosaylazy/ocaml-textmate-highlight"
 bug-reports: "https://github.com/dosaylazy/ocaml-textmate-highlight/issues"
 depends: [
   "dune" {>= "2.6"}
+  "lambdasoup" {>= "0.7" & < "0.8"}
   "odoc" {with-doc}
-  "pcre" {>= "7.4" & < "8.0"}
-  "plist-xml" {< "0.2"}
+  "textmate-highlight" {< "0.2"}
 ]
 build: [
   ["dune" "subst"] {pinned}

@@ -152,15 +152,6 @@ type token =
   | Delim_open of delim * int
   | Delim_close of delim * int
 
-let get_classes spec =
-  let toks = String.split_on_char '.' spec in
-  let _, classes =
-    List.fold_left (fun (toks, classes) tok ->
-        let toks = tok :: toks in
-        (toks, (String.concat "." (List.rev toks)) :: classes)
-      ) ([], []) toks
-  in classes
-
 (** If the stack is empty, returns the main patterns associated with the
     grammar. Otherwise, returns the patterns associated with the delimiter at
     the top of the stack. *)
@@ -173,7 +164,7 @@ let handle_captures default substring =
       let start, end_ = Pcre.get_substring_ofs substring idx in
       (Span(Some capture.capture_name, end_)) :: (Span(default, start)) :: acc)
 
-type stack = delim list
+type t = delim list
 
 let empty = []
 
@@ -250,66 +241,73 @@ let rec match_line ~grammar ~stack ~len ~pos ~acc ~line rem_pats =
          let acc = handle_captures default subs delim.delim_end_captures acc in
          let acc = (Delim_close(delim, end_)) :: acc in
          (* Pop the delimiter off the stack and continue *)
-         match_line ~grammar
-           ~stack:stack' ~len ~pos:end_  ~acc ~line (next_pats grammar stack)
+         match_line ~grammar ~stack:stack' ~len ~pos:end_  ~acc ~line
+           (next_pats grammar stack)
        with Not_found -> try_pats rem_pats ~k
-
-type exists_node = Node : 'a Soup.node -> exists_node
-
-let create_node name i j line =
-  assert (j >= i);
-  let inner_text = String.sub line i (j - i) in
-  let classes = Option.map get_classes name in
-  match classes with
-  | None -> Node (Soup.create_text inner_text)
-  | Some classes -> Node (Soup.create_element ~classes "span" ~inner_text)
-
-let rec highlight_tokens i acc line = function
-  | [] -> List.rev acc, i
-  | Span(name, j) :: toks ->
-     let span = create_node name i j line in
-     highlight_tokens j (span :: acc) line toks
-  | Delim_open(d, j) :: toks ->
-     let span = create_node d.delim_name i j line in
-     highlight_tokens j (span :: acc) line toks
-  | Delim_close(d, j) :: toks ->
-     let span = create_node d.delim_name i j line in
-     highlight_tokens j (span :: acc) line toks
 
 let tokenize_line grammar stack line =
   match_line ~grammar ~stack ~len:(String.length line) ~pos:0 ~acc:[] ~line
     (next_pats grammar stack)
 
-(** Maps over the list while keeping track of some state.
+module type RENDERER = sig
+  type span
+  type line
+  type block
 
-    Discards the state because I don't need it. *)
-let rec map_fold f acc = function
-  | [] -> []
-  | x :: xs ->
-     let y, acc = f acc x in
-     y :: map_fold f acc xs
+  val create_span : string option -> int -> int -> string -> span
+  val create_line : span list -> line
+  val create_block : line list -> block
+end
 
-let highlight_line grammar stack line =
-  let tokens, stack = tokenize_line grammar stack line in
-  let nodes, last = highlight_tokens 0 [] line tokens in
-  let a = Soup.create_element "a" ~class_:"sourceLine" in
-  List.iter (fun (Node node) -> Soup.append_child a node) nodes;
-  let name = match stack with
-    | [] -> None
-    | x :: _ -> x.delim_name
-  in
-  assert (String.get line (String.length line - 1) = '\n');
-  let Node n = create_node name last (String.length line) line in
-  Soup.append_child a n;
-  a, stack
+module type S = sig
+  type line
+  type block
 
-let highlight_block grammar code =
-  let lines = String.split_on_char '\n' code in
-  (* Some patterns don't work if there isn't a newline *)
-  let lines = List.map (fun s -> s ^ "\n") lines in
-  let a's = map_fold (highlight_line grammar) [] lines in
-  let code = Soup.create_element "code" in
-  List.iter (Soup.append_child code) a's;
-  let pre = Soup.create_element "pre" in
-  Soup.append_child pre code;
-  pre
+  val highlight_line : grammar -> t -> string -> line * t
+  val highlight_block : grammar -> string -> block
+end
+
+module Make (R : RENDERER) = struct
+  type line = R.line
+  type block = R.block
+
+  let rec highlight_tokens stack i acc line = function
+    | [] ->
+       let name = match stack with
+         | [] -> None
+         | x :: _ -> x.delim_name
+       in
+       let span = R.create_span name i (String.length line) line in
+       List.rev (span :: acc)
+    | Span(name, j) :: toks ->
+       let span = R.create_span name i j line in
+       highlight_tokens stack j (span :: acc) line toks
+    | Delim_open(d, j) :: toks ->
+       let span = R.create_span d.delim_name i j line in
+       highlight_tokens stack j (span :: acc) line toks
+    | Delim_close(d, j) :: toks ->
+       let span = R.create_span d.delim_name i j line in
+       highlight_tokens stack j (span :: acc) line toks
+
+  (** Maps over the list while keeping track of some state.
+
+      Discards the state because I don't need it. *)
+  let rec map_fold f acc = function
+    | [] -> []
+    | x :: xs ->
+       let y, acc = f acc x in
+       y :: map_fold f acc xs
+
+  let highlight_line grammar stack line =
+    let tokens, stack = tokenize_line grammar stack line in
+    let spans = highlight_tokens stack 0 [] line tokens in
+    assert (String.get line (String.length line - 1) = '\n');
+    R.create_line spans, stack
+
+  let highlight_block grammar code =
+    let lines = String.split_on_char '\n' code in
+    (* Some patterns don't work if there isn't a newline *)
+    let lines = List.map (fun s -> s ^ "\n") lines in
+    let a's = map_fold (highlight_line grammar) [] lines in
+    R.create_block a's
+end

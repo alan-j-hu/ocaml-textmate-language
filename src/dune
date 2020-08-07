@@ -1,4 +1,11 @@
 (library
   (name tm_highlight)
   (public_name textmate-highlight)
-  (libraries lambdasoup pcre plist-xml))
+  (modules tm_highlight)
+  (libraries pcre plist-xml))
+
+(library
+  (name tm_highlight_html)
+  (public_name textmate-highlight-html)
+  (modules tm_highlight_html)
+  (libraries lambdasoup textmate-highlight))
