@@ -1,6 +1,7 @@
-type span = ANSITerminal.style list * string
+type span = string list * string
 type line = span list
 type block = line list
+type style = string -> ANSITerminal.style list option
 type printer = ANSITerminal.style list -> string -> unit
 
 let get_classes spec =
@@ -18,22 +19,28 @@ module Renderer = struct
   type nonrec block = block
 
   let create_span name text =
-    let classes = Option.map get_classes name in
-    match classes with
-    | None -> ([ANSITerminal.Reset], text)
-    | Some _ -> ([ANSITerminal.Foreground Blue], text)
+    match name with
+    | None -> [], text
+    | Some classes -> get_classes classes, text
 
   let create_line spans = spans
 
   let create_block lines = lines
 end
 
-let print_span printer (styles, str) =
-  printer styles str
+let rec get_styles style classes =
+  match classes with
+  | [] -> [ANSITerminal.Reset]
+  | class_ :: classes ->
+     match style class_ with
+     | Some styles -> styles
+     | None -> get_styles style classes
 
-let print_line printer spans =
-  List.iter (print_span printer) spans;
-  printer [] "\n"
+let print_span style printer (classes, str) =
+  printer (get_styles style classes) str
 
-let print_block printer lines =
-  List.iter (print_line printer) lines
+let print_line style printer spans =
+  List.iter (print_span style printer) spans
+
+let print_block style printer lines =
+  List.iter (print_line style printer) lines

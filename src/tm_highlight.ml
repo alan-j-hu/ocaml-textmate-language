@@ -16,7 +16,6 @@ type delim = {
     delim_patterns : pattern list;
     delim_name : string option;
     delim_content_name : string option;
-    delim_pats : pattern list;
     delim_begin_captures : capture IntMap.t;
     delim_end_captures : capture IntMap.t;
   }
@@ -124,7 +123,6 @@ let of_plist_exn plist =
                 delim_name = Option.map get_string (find "name" obj);
                 delim_content_name =
                   Option.map get_string (find "contentName" obj);
-                delim_pats = [];
                 delim_begin_captures;
                 delim_end_captures;
               }
@@ -157,7 +155,7 @@ type token =
     the top of the stack. *)
 let next_pats grammar = function
   | [] -> grammar.patterns
-  | delim :: _ -> delim.delim_pats
+  | delim :: _ -> delim.delim_patterns
 
 let handle_captures default substring =
   IntMap.fold (fun idx capture acc ->
@@ -176,7 +174,7 @@ let empty = []
     [pos]: The current index into the string.
     [acc]: The list of tokens, with the rightmost ones at the front.
     [line]: The string that is being matched and tokenized.
-    [rem_pats]: The remaining patterns that have yet to be tried *)
+    [rem_pats]: The remaining patterns yet to be tried *)
 let rec match_line ~grammar ~stack ~len ~pos ~acc ~line rem_pats =
   let default = match stack with
     | [] -> None
@@ -185,7 +183,7 @@ let rec match_line ~grammar ~stack ~len ~pos ~acc ~line rem_pats =
   (* Try each pattern in the list until one matches. If none match, increment
      [pos] and try all the patterns again. *)
   let rec try_pats ~k = function
-    | [] -> k () (* No patterns have matched, so call the callback *)
+    | [] -> k () (* No patterns have matched, so call the continuation *)
     | { pattern_kind = Match m } :: pats ->
        (try
           let subs = Pcre.exec ~pos ~rex:m.pattern line in
@@ -208,17 +206,18 @@ let rec match_line ~grammar ~stack ~len ~pos ~acc ~line rem_pats =
           let acc = (Delim_open(d, end_)) :: acc in
           (* Push the delimiter on the stack and continue *)
           match_line ~grammar ~stack:(d :: stack) ~len ~pos:end_ ~acc ~line
-            d.delim_pats
+            d.delim_patterns
         with Not_found -> try_pats ~k pats)
     | { pattern_kind = Include name } :: pats ->
+       let k () = try_pats ~k pats in
        let len = String.length name in
        if name = "$self" then
-         error "Unimplemented"
-       else if len > 0 && String.get name 0 = '#' then
+         try_pats grammar.patterns ~k
+       else if len > 0 && name.[0] = '#' then
          let key = String.sub name 1 (len - 1) in
          match Hashtbl.find_opt grammar.repository key with
-         | None -> error ("Unknown repo key " ^ key)
-         | Some pats' -> try_pats pats' ~k:(fun () -> try_pats ~k pats)
+         | None -> error ("Unknown repository key " ^ key)
+         | Some pats -> try_pats pats ~k
        else
          error "Unimplemented"
   in
@@ -232,24 +231,28 @@ let rec match_line ~grammar ~stack ~len ~pos ~acc ~line rem_pats =
     match stack with
     | [] -> try_pats rem_pats ~k
     | delim :: stack' ->
-       try
-         (* Try to match the delimiter's end pattern *)
-         let subs = Pcre.exec ~pos ~rex:delim.delim_end line in
-         let (start, end_) = Pcre.get_substring_ofs subs 0 in
-         assert (start = pos);
-         let acc = (Span(default, pos)) :: acc in
-         let acc = handle_captures default subs delim.delim_end_captures acc in
-         let acc = (Delim_close(delim, end_)) :: acc in
-         (* Pop the delimiter off the stack and continue *)
-         match_line ~grammar ~stack:stack' ~len ~pos:end_  ~acc ~line
-           (next_pats grammar stack)
-       with Not_found -> try_pats rem_pats ~k
+       (* Try to match the delimiter's end pattern *)
+       let subs =
+         try Some (Pcre.exec ~pos ~rex:delim.delim_end line) with
+         | Not_found -> None
+       in
+       match subs with
+       | None -> try_pats rem_pats ~k
+       | Some subs ->
+          let (start, end_) = Pcre.get_substring_ofs subs 0 in
+          assert (start = pos);
+          let acc = (Span(default, pos)) :: acc in
+          let acc = handle_captures default subs delim.delim_end_captures acc in
+          let acc = (Delim_close(delim, end_)) :: acc in
+          (* Pop the delimiter off the stack and continue *)
+          match_line ~grammar ~stack:stack' ~len ~pos:end_  ~acc ~line
+            (next_pats grammar stack)
 
 let tokenize_line grammar stack line =
   match_line ~grammar ~stack ~len:(String.length line) ~pos:0 ~acc:[] ~line
     (next_pats grammar stack)
 
-module type RENDERER = sig
+module type Renderer = sig
   type span
   type line
   type block
@@ -267,7 +270,7 @@ module type S = sig
   val highlight_block : grammar -> string -> block
 end
 
-module Make (R : RENDERER) = struct
+module Make (R : Renderer) = struct
   type line = R.line
   type block = R.block
 
@@ -304,15 +307,14 @@ module Make (R : RENDERER) = struct
        y :: map_fold f acc xs
 
   let highlight_line grammar stack line =
+    (* Some patterns don't work if there isn't a newline *)
+    let line = line ^ "\n" in
     let tokens, stack = tokenize_line grammar stack line in
     let spans = highlight_tokens stack 0 [] line tokens in
-    assert (String.get line (String.length line - 1) = '\n');
     R.create_line spans, stack
 
   let highlight_block grammar code =
     let lines = String.split_on_char '\n' code in
-    (* Some patterns don't work if there isn't a newline *)
-    let lines = List.map (fun s -> s ^ "\n") lines in
     let a's = map_fold (highlight_line grammar) [] lines in
     R.create_block a's
 end

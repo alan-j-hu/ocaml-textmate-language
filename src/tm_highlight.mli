@@ -14,7 +14,7 @@ val of_plist_exn : Plist_xml.t -> grammar
 val empty : t
 (** The initial state of the code highlighter. *)
 
-module type RENDERER = sig
+module type Renderer = sig
   type span
   type line
   type block
@@ -42,4 +42,4 @@ module type S = sig
   val highlight_block : grammar -> string -> block
 end
 
-module Make (R : RENDERER) : S with type line = R.line and type block = R.block
+module Make (R : Renderer) : S with type line = R.line and type block = R.block

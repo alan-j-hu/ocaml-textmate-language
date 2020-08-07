@@ -2,4 +2,4 @@
   (name main)
   (libraries
     lambdasoup markup pcre plist-xml
-    textmate-highlight textmate-highlight-ansi))
+    textmate-highlight textmate-highlight-ansi textmate-highlight-html))

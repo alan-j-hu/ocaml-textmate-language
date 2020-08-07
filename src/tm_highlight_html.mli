@@ -1,1 +1,1 @@
-module Renderer : Tm_highlight.RENDERER with type block = Soup.element Soup.node
+module Renderer : Tm_highlight.Renderer with type block = Soup.element Soup.node

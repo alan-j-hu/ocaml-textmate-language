@@ -7,8 +7,7 @@ let get_classes spec =
       ) ([], []) toks
   in classes
 
-module Renderer : Tm_highlight.RENDERER with type block = Soup.element Soup.node
-  = struct
+module Renderer = struct
   type span = Node : 'a Soup.node -> span
   type line = Soup.element Soup.node
   type block = Soup.element Soup.node
