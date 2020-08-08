@@ -20,14 +20,10 @@ type delim = {
     delim_end_captures : capture IntMap.t;
   }
 
-and pattern_kind =
+and pattern =
   | Match of match_
   | Delim of delim
   | Include of string
-
-and pattern = {
-    pattern_kind : pattern_kind;
-  }
 
 type grammar = {
     name : string;
@@ -81,54 +77,52 @@ let of_plist_exn plist =
     get_list (fun x -> get_dict x |> patterns_of_plist)
       (find_exn "patterns" obj)
   and patterns_of_plist obj =
-    let kind =
-      match find "include" obj with
-      | Some s -> Include (get_string s)
-      | None ->
-         match find "match" obj, find "begin" obj, find "end" obj with
-         | Some s, None, None ->
-            Match {
-                pattern = Pcre.regexp ~iflags (get_string s);
-                name = Option.map get_string (find "name" obj);
-                captures =
-                  match find "captures" obj with
-                  | None -> IntMap.empty
+    match find "include" obj with
+    | Some s -> Include (get_string s)
+    | None ->
+       match find "match" obj, find "begin" obj, find "end" obj with
+       | Some s, None, None ->
+          Match {
+              pattern = Pcre.regexp ~iflags (get_string s);
+              name = Option.map get_string (find "name" obj);
+              captures =
+                match find "captures" obj with
+                | None -> IntMap.empty
+                | Some value ->
+                   get_captures IntMap.empty (get_dict value)
+            }
+       | None, Some b, Some e ->
+          let delim_begin_captures, delim_end_captures =
+            match find "captures" obj with
+            | Some value ->
+               let captures = get_captures IntMap.empty (get_dict value) in
+               captures, captures
+            | None ->
+               ( (match find "beginCaptures" obj with
                   | Some value ->
                      get_captures IntMap.empty (get_dict value)
-              }
-         | None, Some b, Some e ->
-            let delim_begin_captures, delim_end_captures =
-              match find "captures" obj with
-              | Some value ->
-                 let captures = get_captures IntMap.empty (get_dict value) in
-                 captures, captures
-              | None ->
-                 ( (match find "beginCaptures" obj with
-                    | Some value ->
-                       get_captures IntMap.empty (get_dict value)
-                    | None -> IntMap.empty)
-                 , (match find "endCaptures" obj with
-                    | Some value ->
-                       get_captures IntMap.empty (get_dict value)
-                    | None -> IntMap.empty) )
-            in
-            Delim {
-                delim_begin = Pcre.regexp ~iflags (get_string b);
-                delim_end = Pcre.regexp ~iflags (get_string e);
-                delim_patterns =
-                  begin match find "patterns" obj with
-                  | None -> []
-                  | Some v ->
-                     get_list (fun x -> get_dict x |> patterns_of_plist) v
-                  end;
-                delim_name = Option.map get_string (find "name" obj);
-                delim_content_name =
-                  Option.map get_string (find "contentName" obj);
-                delim_begin_captures;
-                delim_end_captures;
-              }
-         | _, _, _ -> error "Pattern must be either match or begin/end"
-    in { pattern_kind = kind; }
+                  | None -> IntMap.empty)
+               , (match find "endCaptures" obj with
+                  | Some value ->
+                     get_captures IntMap.empty (get_dict value)
+                  | None -> IntMap.empty) )
+          in
+          Delim {
+              delim_begin = Pcre.regexp ~iflags (get_string b);
+              delim_end = Pcre.regexp ~iflags (get_string e);
+              delim_patterns =
+                begin match find "patterns" obj with
+                | None -> []
+                | Some v ->
+                   get_list (fun x -> get_dict x |> patterns_of_plist) v
+                end;
+              delim_name = Option.map get_string (find "name" obj);
+              delim_content_name =
+                Option.map get_string (find "contentName" obj);
+              delim_begin_captures;
+              delim_end_captures;
+            }
+       | _, _, _ -> error "Pattern must be either match or begin/end"
   in
   let obj = get_dict plist in
   { name = get_string (find_exn "name" obj)
@@ -234,7 +228,7 @@ let rec match_line ~grammar ~stack ~len ~pos ~acc ~line rem_pats =
      [pos] and try all the patterns again. *)
   let rec try_pats ~k = function
     | [] -> k () (* No patterns have matched, so call the continuation *)
-    | { pattern_kind = Match m } :: pats ->
+    | Match m :: pats ->
        begin match Pcre.exec ~pos ~rex:m.pattern line with
        | exception Not_found -> try_pats ~k pats
        | subs ->
@@ -246,7 +240,7 @@ let rec match_line ~grammar ~stack ~len ~pos ~acc ~line rem_pats =
           match_line ~grammar ~stack ~len ~pos:end_ ~acc ~line
             (next_pats grammar stack)
        end
-    | { pattern_kind = Delim d } :: pats ->
+    | Delim d :: pats ->
        (* Try to match the delimiter's begin pattern *)
        begin match Pcre.exec ~pos ~rex:d.delim_begin line with
        | exception Not_found -> try_pats ~k pats
@@ -262,7 +256,7 @@ let rec match_line ~grammar ~stack ~len ~pos ~acc ~line rem_pats =
           match_line ~grammar ~stack:(d :: stack) ~len ~pos:end_ ~acc ~line
             d.delim_patterns
        end
-    | { pattern_kind = Include name } :: pats ->
+    | Include name :: pats ->
        let k () = try_pats ~k pats in
        let len = String.length name in
        if name = "$self" then
