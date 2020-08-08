@@ -23,7 +23,9 @@ type delim = {
 and pattern =
   | Match of match_
   | Delim of delim
-  | Include of string
+  | Include_local of string
+  | Include_scope of string
+  | Include_self
 
 type grammar = {
     name : string;
@@ -78,7 +80,16 @@ let of_plist_exn plist =
       (find_exn "patterns" obj)
   and patterns_of_plist obj =
     match find "include" obj with
-    | Some s -> Include (get_string s)
+    | Some s ->
+       let s = get_string s in
+       let len = String.length s in
+       if s = "$self" then
+         Include_self
+       else if len > 0 && s.[0] = '#' then
+         let key = String.sub s 1 (len - 1) in
+         Include_local key
+       else
+         Include_scope s
     | None ->
        match find "match" obj, find "begin" obj, find "end" obj with
        | Some s, None, None ->
@@ -256,18 +267,15 @@ let rec match_line ~grammar ~stack ~len ~pos ~acc ~line rem_pats =
           match_line ~grammar ~stack:(d :: stack) ~len ~pos:end_ ~acc ~line
             d.delim_patterns
        end
-    | Include name :: pats ->
+    | Include_scope _ :: _ -> error "Unimplemented"
+    | Include_self :: pats ->
        let k () = try_pats ~k pats in
-       let len = String.length name in
-       if name = "$self" then
-         try_pats grammar.patterns ~k
-       else if len > 0 && name.[0] = '#' then
-         let key = String.sub name 1 (len - 1) in
-         match Hashtbl.find_opt grammar.repository key with
-         | None -> error ("Unknown repository key " ^ key)
-         | Some pats -> try_pats pats ~k
-       else
-         error "Unimplemented"
+       try_pats grammar.patterns ~k
+    | Include_local key :: pats ->
+       let k () = try_pats ~k pats in
+       match Hashtbl.find_opt grammar.repository key with
+       | None -> error ("Unknown repository key " ^ key)
+       | Some pats -> try_pats pats ~k
   in
   if pos > len then
     (List.rev acc, stack) (* End of string reached *)
