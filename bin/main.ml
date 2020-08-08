@@ -24,7 +24,7 @@ let style = function
   | "invalid" -> Some [ANSITerminal.red]
   | "keyword.control" -> Some [ANSITerminal.magenta]
   | "keyword.operator" -> Some [ANSITerminal.yellow]
-  | "keyword" -> Some [ANSITerminal.magenta; ANSITerminal.Bold]
+  | "keyword" -> Some [ANSITerminal.Bold]
   | "meta.module-reference" -> Some [ANSITerminal.green]
   | "punctuation.definition.comment" -> Some [ANSITerminal.cyan]
   | "punctuation.definition.string" -> Some [ANSITerminal.magenta]
@@ -34,6 +34,7 @@ let style = function
   | _ -> None
 
 let () =
+  Printexc.record_backtrace true;
   if Array.length Sys.argv < 3 then (
     prerr_endline "No grammar file specified.";
     exit 1

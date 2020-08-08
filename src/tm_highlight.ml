@@ -64,8 +64,9 @@ let get_list f = function
   | `Array l -> List.map f l
   | _ -> error "Type error: Expected list"
 
+let iflags = Pcre.cflags [`ANCHORED; `DOLLAR_ENDONLY]
+
 let of_plist_exn plist =
-  let iflags = Pcre.cflags [`ANCHORED; `DOLLAR_ENDONLY] in
   let rec get_captures acc = function
     | [] -> acc
     | (k, v) :: kvs ->
@@ -157,10 +158,59 @@ let next_pats grammar = function
   | [] -> grammar.patterns
   | delim :: _ -> delim.delim_patterns
 
-let handle_captures default substring =
-  IntMap.fold (fun idx capture acc ->
-      let start, end_ = Pcre.get_substring_ofs substring idx in
-      (Span(Some capture.capture_name, end_)) :: (Span(default, start)) :: acc)
+let handle_captures default mat_end line captures tokens =
+  let _, tokens =
+    (* Regex captures are ordered by their left parentheses. Do a depth-first
+       preorder traversal by keeping a stack of captures. *)
+    IntMap.fold (fun idx capture (stack, tokens) ->
+        (* If the capture mentions a lookahead, it can go past the bounds of its
+           parent. The match is capped at the boundary for the parent. Is this
+           the right decision to make? Clearly the writer of the grammar
+           intended for the capture to exceed the parent in this case. *)
+        match stack with
+        | [] ->
+           (try
+              let cap_start, cap_end = Pcre.get_substring_ofs line idx in
+              let cap_end =
+                if cap_end > mat_end then
+                  mat_end
+                else
+                  cap_end
+              in
+              ( [cap_end, capture.capture_name]
+              , (Span(Some capture.capture_name, cap_end))
+                :: (Span(default, cap_start)) :: tokens )
+            with Not_found -> ([], tokens))
+        | (top_end, top_name) :: stack' ->
+           try
+             let cap_start, cap_end = Pcre.get_substring_ofs line idx in
+             if cap_start >= top_end then
+               let under = match stack' with
+                 | [] -> mat_end
+                 | (n, _) :: _ -> n
+               in
+               let cap_end =
+                 if cap_end > under then
+                   under
+                 else
+                   cap_end
+               in
+               ( (cap_end, capture.capture_name) :: stack'
+               , (Span(Some capture.capture_name, cap_end))
+                 :: (Span(Some top_name, cap_start)) :: tokens )
+             else
+               let cap_end =
+                 if cap_end > top_end then
+                   top_end
+                 else
+                   cap_end
+               in
+               ( (cap_end, capture.capture_name) :: stack
+               , (Span(Some capture.capture_name, cap_end))
+                 :: (Span(Some top_name, cap_start)) :: tokens )
+           with Not_found -> (stack, tokens)
+      ) captures ([], tokens)
+  in tokens
 
 type t = delim list
 
@@ -185,29 +235,33 @@ let rec match_line ~grammar ~stack ~len ~pos ~acc ~line rem_pats =
   let rec try_pats ~k = function
     | [] -> k () (* No patterns have matched, so call the continuation *)
     | { pattern_kind = Match m } :: pats ->
-       (try
-          let subs = Pcre.exec ~pos ~rex:m.pattern line in
-          let (start, end_) = Pcre.get_substring_ofs subs 0 in
+       begin match Pcre.exec ~pos ~rex:m.pattern line with
+       | exception Not_found -> try_pats ~k pats
+       | subs ->
+          let start, end_ = Pcre.get_substring_ofs subs 0 in
           assert (start = pos);
           let acc = (Span(default, pos)) :: acc in
-          let acc = handle_captures default subs m.captures acc in
+          let acc = handle_captures default end_ subs m.captures acc in
           let acc = (Span(m.name, end_)) :: acc in
           match_line ~grammar ~stack ~len ~pos:end_ ~acc ~line
             (next_pats grammar stack)
-        with Not_found -> try_pats ~k pats)
+       end
     | { pattern_kind = Delim d } :: pats ->
-       (try
-          (* Try to match the delimiter's begin pattern *)
-          let subs = Pcre.exec ~pos ~rex:d.delim_begin line in
-          let (start, end_) = Pcre.get_substring_ofs subs 0 in
+       (* Try to match the delimiter's begin pattern *)
+       begin match Pcre.exec ~pos ~rex:d.delim_begin line with
+       | exception Not_found -> try_pats ~k pats
+       | subs ->
+          let start, end_ = Pcre.get_substring_ofs subs 0 in
           assert (start = pos);
           let acc = (Span(default, pos)) :: acc in
-          let acc = handle_captures default subs d.delim_begin_captures acc in
+          let acc =
+            handle_captures default end_ subs d.delim_begin_captures acc
+          in
           let acc = (Delim_open(d, end_)) :: acc in
           (* Push the delimiter on the stack and continue *)
           match_line ~grammar ~stack:(d :: stack) ~len ~pos:end_ ~acc ~line
             d.delim_patterns
-        with Not_found -> try_pats ~k pats)
+       end
     | { pattern_kind = Include name } :: pats ->
        let k () = try_pats ~k pats in
        let len = String.length name in
@@ -232,17 +286,15 @@ let rec match_line ~grammar ~stack ~len ~pos ~acc ~line rem_pats =
     | [] -> try_pats rem_pats ~k
     | delim :: stack' ->
        (* Try to match the delimiter's end pattern *)
-       let subs =
-         try Some (Pcre.exec ~pos ~rex:delim.delim_end line) with
-         | Not_found -> None
-       in
-       match subs with
-       | None -> try_pats rem_pats ~k
-       | Some subs ->
+       match Pcre.exec ~pos ~rex:delim.delim_end line with
+       | exception Not_found -> try_pats rem_pats ~k
+       | subs ->
           let (start, end_) = Pcre.get_substring_ofs subs 0 in
           assert (start = pos);
           let acc = (Span(default, pos)) :: acc in
-          let acc = handle_captures default subs delim.delim_end_captures acc in
+          let acc =
+            handle_captures default end_ subs delim.delim_end_captures acc
+          in
           let acc = (Delim_close(delim, end_)) :: acc in
           (* Pop the delimiter off the stack and continue *)
           match_line ~grammar ~stack:stack' ~len ~pos:end_  ~acc ~line
