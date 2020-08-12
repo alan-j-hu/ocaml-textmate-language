@@ -233,7 +233,11 @@ let empty = []
 let rec match_line ~grammar ~stack ~len ~pos ~acc ~line rem_pats =
   let default, stk_pats = match stack with
     | [] -> None, grammar.patterns
-    | x :: _ -> x.delim_name, x.delim_patterns
+    | d :: _ ->
+       ( (match d.delim_content_name with
+          | Some name -> Some name
+          | None -> d.delim_name)
+       , d.delim_patterns )
   in
   (* Try each pattern in the list until one matches. If none match, increment
      [pos] and try all the patterns again. *)
@@ -259,9 +263,8 @@ let rec match_line ~grammar ~stack ~len ~pos ~acc ~line rem_pats =
           let start, end_ = Pcre.get_substring_ofs subs 0 in
           assert (start = pos);
           let acc = (Span(default, pos)) :: acc in
-          let default = d.delim_name in
           let acc =
-            handle_captures default end_ subs d.delim_begin_captures acc
+            handle_captures d.delim_name end_ subs d.delim_begin_captures acc
           in
           let acc = (Delim_open(d, end_)) :: acc in
           (* Push the delimiter on the stack and continue *)
@@ -294,7 +297,11 @@ let rec match_line ~grammar ~stack ~len ~pos ~acc ~line rem_pats =
        | subs ->
           let (start, end_) = Pcre.get_substring_ofs subs 0 in
           assert (start = pos);
-          let acc = (Span(delim.delim_name, pos)) :: acc in
+          let name = match delim.delim_content_name with
+            | Some name -> Some name
+            | None -> delim.delim_name
+          in
+          let acc = (Span(name, pos)) :: acc in
           let acc =
             handle_captures delim.delim_name end_ subs
               delim.delim_end_captures acc

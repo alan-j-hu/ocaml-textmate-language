@@ -28,7 +28,7 @@ let style = function
   | "meta.module-reference" -> Some [ANSITerminal.green]
   | "punctuation.definition.comment" -> Some [ANSITerminal.cyan]
   | "punctuation.definition.string" -> Some [ANSITerminal.magenta]
-  | "string" -> Some [ANSITerminal.magenta]
+  | "string.quoted" -> Some [ANSITerminal.magenta]
   | "variable.parameter.labeled" | "variable.parameter.optional" ->
      Some [ANSITerminal.cyan]
   | _ -> None
