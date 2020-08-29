@@ -1,17 +1,4 @@
 (library
   (name tm_highlight)
   (public_name textmate-highlight)
-  (modules tm_highlight)
   (libraries pcre plist-xml))
-
-(library
-  (name tm_highlight_html)
-  (public_name textmate-highlight-html)
-  (modules tm_highlight_html)
-  (libraries lambdasoup textmate-highlight))
-
-(library
-  (name tm_highlight_ansi)
-  (public_name textmate-highlight-ansi)
-  (modules tm_highlight_ansi)
-  (libraries ANSITerminal textmate-highlight))

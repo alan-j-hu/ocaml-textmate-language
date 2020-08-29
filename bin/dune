@@ -1,5 +1,3 @@
 (executable
   (name main)
-  (libraries
-    lambdasoup markup pcre plist-xml
-    textmate-highlight textmate-highlight-ansi textmate-highlight-html))
+  (libraries ANSITerminal pcre plist-xml textmate-highlight))

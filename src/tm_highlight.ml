@@ -360,13 +360,3 @@ let rec match_line ~grammar ~stack ~len ~pos ~acc ~line rem_pats =
 let tokenize_line grammar stack line =
   match_line ~grammar ~stack ~len:(String.length line) ~pos:0 ~acc:[] ~line
     (next_pats grammar stack)
-
-module type Renderer = sig
-  type span
-  type line
-  type block
-
-  val create_span : string option -> string -> span
-  val create_line : span list -> line
-  val create_block : line list -> block
-end

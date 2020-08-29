@@ -20,22 +20,3 @@ type token = {
   }
 
 val tokenize_line : grammar -> t -> string -> token list * t
-
-module type Renderer = sig
-  type span
-  type line
-  type block
-
-  val create_span : string option -> string -> span
-  (** [create_span desc token] creates a span of highlighted code containing
-      [token] belonging to the token category [desc]. *)
-
-  val create_line : span list -> line
-  (** [create_line spans] creates a highlighted line of code from the given
-      list of spans. *)
-
-  val create_block : line list -> block
-  (** [create_block lines] creates a highlighted block of code from the given
-      list of lines. *)
-end
-(** User-supplied highlighting backend for the highlighter. *)
