@@ -164,10 +164,10 @@ let of_plist_exn plist =
            ) (get_dict kvs);
          hashtbl }
 
-type token =
-  | Span of string option * int
-  | Delim_open of delim * int
-  | Delim_close of delim * int
+type token = {
+    scope : string option;
+    ending : int;
+  }
 
 (** If the stack is empty, returns the main patterns associated with the
     grammar. Otherwise, returns the patterns associated with the delimiter at
@@ -196,9 +196,9 @@ let handle_captures default mat_end line captures tokens =
                   cap_end
               in
               ( [cap_end, capture.capture_name]
-              , (Span(Some capture.capture_name, cap_end) 
-                :: (Span(default, cap_start)) :: tokens) )
-            with Not_found -> ([], tokens))
+              , { scope = Some capture.capture_name; ending = cap_end }
+                :: { scope = default; ending = cap_start } :: tokens )
+            with Not_found | Invalid_argument _ -> ([], tokens))
         | (top_end, top_name) :: stack' ->
            try
              let cap_start, cap_end = Pcre.get_substring_ofs line idx in
@@ -214,8 +214,8 @@ let handle_captures default mat_end line captures tokens =
                    cap_end
                in
                ( (cap_end, capture.capture_name) :: stack'
-               , (Span(Some capture.capture_name, cap_end))
-                 :: (Span(Some top_name, cap_start)) :: tokens )
+               , { scope = Some capture.capture_name; ending = cap_end }
+                 :: { scope = Some top_name; ending = cap_start } :: tokens )
              else
                let cap_end =
                  if cap_end > top_end then
@@ -224,9 +224,9 @@ let handle_captures default mat_end line captures tokens =
                    cap_end
                in
                ( (cap_end, capture.capture_name) :: stack
-               , (Span(Some capture.capture_name, cap_end))
-                 :: (Span(Some top_name, cap_start)) :: tokens )
-           with Not_found -> (stack, tokens)
+               , { scope = Some capture.capture_name; ending = cap_end }
+                 :: { scope = Some top_name; ending = cap_start } :: tokens )
+           with Not_found | Invalid_argument _ -> (stack, tokens)
       ) captures ([], tokens)
   in tokens
 
@@ -262,9 +262,9 @@ let rec match_line ~grammar ~stack ~len ~pos ~acc ~line rem_pats =
        | subs ->
           let start, end_ = Pcre.get_substring_ofs subs 0 in
           assert (start = pos);
-          let acc = (Span(default, pos)) :: acc in
+          let acc = { scope = default; ending = pos } :: acc in
           let acc = handle_captures default end_ subs m.captures acc in
-          let acc = (Span(m.name, end_)) :: acc in
+          let acc = { scope = m.name; ending = end_ } :: acc in
           match_line ~grammar ~stack ~len ~pos:end_ ~acc ~line
             (next_pats grammar stack)
        end
@@ -275,11 +275,11 @@ let rec match_line ~grammar ~stack ~len ~pos ~acc ~line rem_pats =
        | subs ->
           let start, end_ = Pcre.get_substring_ofs subs 0 in
           assert (start = pos);
-          let acc = (Span(default, pos)) :: acc in
+          let acc = { scope = default; ending = pos } :: acc in
           let acc =
             handle_captures d.delim_name end_ subs d.delim_begin_captures acc
           in
-          let acc = (Delim_open(d, end_)) :: acc in
+          let acc = { scope = d.delim_name; ending = end_ } :: acc in
           match d.delim_kind with
           | End ->
              (* Push the delimiter on the stack and continue *)
@@ -287,7 +287,8 @@ let rec match_line ~grammar ~stack ~len ~pos ~acc ~line rem_pats =
                d.delim_patterns
           | While ->
              (* Subsume the remainder of the line into a span *)
-             ( List.rev ((Span(d.delim_name, String.length line)) :: acc)
+             ( List.rev
+                 ({ scope = d.delim_name; ending = String.length line } :: acc)
              , d :: stack )
        end
     | Include_scope _ :: _ -> error "Unimplemented"
@@ -312,7 +313,7 @@ let rec match_line ~grammar ~stack ~len ~pos ~acc ~line rem_pats =
            | Some name -> Some name
            | None -> delim.delim_name
          in
-         let acc = (Span(name, pos)) :: acc in
+         let acc = { scope = name; ending = pos } :: acc in
          let acc =
            handle_captures delim.delim_name end_ subs
              delim.delim_end_captures acc
@@ -321,23 +322,28 @@ let rec match_line ~grammar ~stack ~len ~pos ~acc ~line rem_pats =
     match delim.delim_kind, end_match with
     | End, None -> k ()
     | End, Some (end_, acc) ->
-       let acc = (Delim_close(delim, end_)) :: acc in
+       let acc = { scope = delim.delim_name; ending = end_ } :: acc in
        (* Pop the delimiter off the stack and continue *)
        match_line ~grammar ~stack:stack' ~len ~pos:end_  ~acc ~line
          (next_pats grammar stack)
     | While, Some (_, acc) ->
        (* Subsume the remainder of the line into a span *)
-       ( List.rev ((Span(delim.delim_name, String.length line)) :: acc)
+       ( List.rev
+           ({ scope = delim.delim_name; ending = String.length line } :: acc)
        , stack )
     | While, None -> k ()
   in
   if pos > len then
     (* End of string reached *)
     match stack with
-    | [] -> (List.rev acc, stack)
-    | { delim_kind = End; _ } :: _ -> (List.rev acc, stack)
-    (* If reached, this means that the while pattern wasn't matched *)
-    | { delim_kind = While; _ } :: stack -> (List.rev acc, stack)
+    | [] -> (List.rev ({ scope = None; ending = len } :: acc), stack)
+    | { delim_kind = End; delim_name = scope; _ } :: _ ->
+       (List.rev ({ scope; ending = len } :: acc), stack)
+    (* If reached, this means that the while pattern wasn't matched. Retry the
+       line. *)
+    | { delim_kind = While; _ } :: stack ->
+       match_line ~grammar ~stack ~len ~pos:0 ~acc:[] ~line
+         (next_pats grammar stack)
   else
     (* No patterns have matched, so increment the position and try again *)
     let k () =
@@ -363,61 +369,4 @@ module type Renderer = sig
   val create_span : string option -> string -> span
   val create_line : span list -> line
   val create_block : line list -> block
-end
-
-module type S = sig
-  type line
-  type block
-
-  val highlight_line : grammar -> t -> string -> line * t
-  val highlight_block : grammar -> string -> block
-end
-
-module Make (R : Renderer) = struct
-  type line = R.line
-  type block = R.block
-
-  let create_span name i j line =
-    assert (j >= i);
-    let inner_text = String.sub line i (j - i) in
-    R.create_span name inner_text
-
-  let rec highlight_tokens stack i acc line = function
-    | [] ->
-       let name = match stack with
-         | [] -> None
-         | x :: _ -> x.delim_name
-       in
-       let span = create_span name i (String.length line) line in
-       List.rev (span :: acc)
-    | Span(name, j) :: toks ->
-       let span = create_span name i j line in
-       highlight_tokens stack j (span :: acc) line toks
-    | Delim_open(d, j) :: toks ->
-       let span = create_span d.delim_name i j line in
-       highlight_tokens stack j (span :: acc) line toks
-    | Delim_close(d, j) :: toks ->
-       let span = create_span d.delim_name i j line in
-       highlight_tokens stack j (span :: acc) line toks
-
-  (** Maps over the list while keeping track of some state.
-
-      Discards the state because I don't need it. *)
-  let rec map_fold f acc = function
-    | [] -> []
-    | x :: xs ->
-       let y, acc = f acc x in
-       y :: map_fold f acc xs
-
-  let highlight_line grammar stack line =
-    (* Some patterns don't work if there isn't a newline *)
-    let line = line ^ "\n" in
-    let tokens, stack = tokenize_line grammar stack line in
-    let spans = highlight_tokens stack 0 [] line tokens in
-    R.create_line spans, stack
-
-  let highlight_block grammar code =
-    let lines = String.split_on_char '\n' code in
-    let a's = map_fold (highlight_line grammar) [] lines in
-    R.create_block a's
 end

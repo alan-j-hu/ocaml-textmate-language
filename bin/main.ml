@@ -1,12 +1,55 @@
-module Make (R : Tm_highlight.Renderer) = struct
-  module H = Tm_highlight.Make(R)
+open Tm_highlight
+
+module type S = sig
+  type line
+  type block
+
+  val highlight_line : grammar -> t -> string -> line * t
+  val highlight_block : grammar -> string -> block
+end
+
+module Make (R : Renderer) = struct
+  type line = R.line
+  type block = R.block
+
+  let create_span name i j line =
+    assert (j >= i);
+    let inner_text = String.sub line i (j - i) in
+    R.create_span name inner_text
+
+  let rec highlight_tokens i acc line = function
+    | [] -> List.rev acc
+    | tok :: toks ->
+       let span = create_span tok.scope i tok.ending line in
+       highlight_tokens tok.ending (span :: acc) line toks
+
+  (** Maps over the list while keeping track of some state.
+
+      Discards the state because I don't need it. *)
+  let rec map_fold f acc = function
+    | [] -> []
+    | x :: xs ->
+       let y, acc = f acc x in
+       y :: map_fold f acc xs
+
+  let highlight_line grammar stack line =
+    (* Some patterns don't work if there isn't a newline *)
+    let line = line ^ "\n" in
+    let tokens, stack = tokenize_line grammar stack line in
+    let spans = highlight_tokens 0 [] line tokens in
+    R.create_line spans, stack
+
+  let highlight_block grammar code =
+    let lines = String.split_on_char '\n' code in
+    let a's = map_fold (highlight_line grammar) empty lines in
+    R.create_block a's
 
   let read grammar t =
     let rec loop t acc =
       match read_line () with
       | exception End_of_file -> List.rev acc
       | line ->
-         let line, t = H.highlight_line grammar t line in
+         let line, t = highlight_line grammar t line in
          loop t (line :: acc)
     in loop t []
 end

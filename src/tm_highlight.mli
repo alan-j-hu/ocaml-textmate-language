@@ -14,6 +14,13 @@ val of_plist_exn : Plist_xml.t -> grammar
 val empty : t
 (** The initial state of the code highlighter. *)
 
+type token = {
+    scope : string option;
+    ending : int;
+  }
+
+val tokenize_line : grammar -> t -> string -> token list * t
+
 module type Renderer = sig
   type span
   type line
@@ -32,14 +39,3 @@ module type Renderer = sig
       list of lines. *)
 end
 (** User-supplied highlighting backend for the highlighter. *)
-
-module type S = sig
-  type line
-  type block
-
-  val highlight_line : grammar -> t -> string -> line * t
-
-  val highlight_block : grammar -> string -> block
-end
-
-module Make (R : Renderer) : S with type line = R.line and type block = R.block
