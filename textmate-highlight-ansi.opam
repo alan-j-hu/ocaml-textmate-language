@@ -13,8 +13,7 @@ bug-reports: "https://github.com/dosaylazy/ocaml-textmate-highlight/issues"
 depends: [
   "dune" {>= "2.6"}
   "ANSITerminal" {>= "0.8.2" & < "0.9"}
-  "odoc" {with-doc}
-  "textmate-highlight" {< "0.2"}
+  "textmate-highlight" {< "0.3"}
 ]
 build: [
   ["dune" "subst"] {pinned}

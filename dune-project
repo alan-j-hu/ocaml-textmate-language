@@ -5,6 +5,7 @@
 (authors "Alan Hu <hu.ala@northeastern.edu>")
 (maintainers "Alan Hu <hu.ala@northeastern.edu>")
 (source (github dosaylazy/ocaml-textmate-highlight))
+(name textmate-highlight)
 
 (package
   (name textmate-highlight)
@@ -12,9 +13,8 @@
   (description "This library generates highlighted HTML fragments from TextMate
 grammars.")
   (depends
-    (odoc :with-doc)
     (pcre (and (>= 7.4) (< 8.0)))
-    (plist-xml (< 0.2))))
+    (plist-xml (< 0.3))))
 
 (package
   (name textmate-highlight-ansi)
@@ -23,8 +23,7 @@ grammars.")
 grammars.")
   (depends
     (ANSITerminal (and (>= 0.8.2) (< 0.9)))
-    (odoc :with-doc)
-    (textmate-highlight (< 0.2))))
+    (textmate-highlight (< 0.3))))
 
 
 (package
@@ -34,5 +33,4 @@ grammars.")
 grammars.")
   (depends
     (lambdasoup (and (>= 0.7) (< 0.8)))
-    (odoc :with-doc)
     (textmate-highlight (< 0.2))))

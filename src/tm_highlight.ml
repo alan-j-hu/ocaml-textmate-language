@@ -10,6 +10,8 @@ type match_ = {
     captures : capture IntMap.t;
   }
 
+type delim_kind = End | While
+
 type delim = {
     delim_begin : Pcre.regexp;
     delim_end : Pcre.regexp;
@@ -18,6 +20,7 @@ type delim = {
     delim_content_name : string option;
     delim_begin_captures : capture IntMap.t;
     delim_end_captures : capture IntMap.t;
+    delim_kind : delim_kind;
   }
 
 and pattern =
@@ -86,13 +89,12 @@ let of_plist_exn plist =
        if s = "$self" then
          Include_self
        else if len > 0 && s.[0] = '#' then
-         let key = String.sub s 1 (len - 1) in
-         Include_local key
+         Include_local (String.sub s 1 (len - 1))
        else
          Include_scope s
     | None ->
-       match find "match" obj, find "begin" obj, find "end" obj with
-       | Some s, None, None ->
+       match find "match" obj, find "begin" obj with
+       | Some s, None ->
           Match {
               pattern = Pcre.regexp ~iflags (get_string s);
               name = Option.map get_string (find "name" obj);
@@ -102,7 +104,12 @@ let of_plist_exn plist =
                 | Some value ->
                    get_captures IntMap.empty (get_dict value)
             }
-       | None, Some b, Some e ->
+       | None, Some b ->
+          let e, key, delim_kind = match find "end" obj, find "while" obj with
+            | Some e, None -> e, "endCaptures", End
+            | None, Some e -> e, "whileCaptures", While
+            | _, _ -> error "Begin pattern must either have end and while"
+          in
           let delim_begin_captures, delim_end_captures =
             match find "captures" obj with
             | Some value ->
@@ -110,12 +117,10 @@ let of_plist_exn plist =
                captures, captures
             | None ->
                ( (match find "beginCaptures" obj with
-                  | Some value ->
-                     get_captures IntMap.empty (get_dict value)
+                  | Some value -> get_captures IntMap.empty (get_dict value)
                   | None -> IntMap.empty)
-               , (match find "endCaptures" obj with
-                  | Some value ->
-                     get_captures IntMap.empty (get_dict value)
+               , (match find key obj with
+                  | Some value -> get_captures IntMap.empty (get_dict value)
                   | None -> IntMap.empty) )
           in
           Delim {
@@ -132,8 +137,9 @@ let of_plist_exn plist =
                 Option.map get_string (find "contentName" obj);
               delim_begin_captures;
               delim_end_captures;
+              delim_kind;
             }
-       | _, _, _ -> error "Pattern must be either match or begin/end"
+       | _, _ -> error "Pattern must be match, begin/end, or begin/while"
   in
   let obj = get_dict plist in
   { name = get_string (find_exn "name" obj)
@@ -183,8 +189,8 @@ let handle_captures default mat_end line captures tokens =
                   cap_end
               in
               ( [cap_end, capture.capture_name]
-              , (Span(Some capture.capture_name, cap_end))
-                :: (Span(default, cap_start)) :: tokens )
+              , (Span(Some capture.capture_name, cap_end) 
+                :: (Span(default, cap_start)) :: tokens) )
             with Not_found -> ([], tokens))
         | (top_end, top_name) :: stack' ->
            try
@@ -267,9 +273,15 @@ let rec match_line ~grammar ~stack ~len ~pos ~acc ~line rem_pats =
             handle_captures d.delim_name end_ subs d.delim_begin_captures acc
           in
           let acc = (Delim_open(d, end_)) :: acc in
-          (* Push the delimiter on the stack and continue *)
-          match_line ~grammar ~stack:(d :: stack) ~len ~pos:end_ ~acc ~line
-            d.delim_patterns
+          match d.delim_kind with
+          | End ->
+             (* Push the delimiter on the stack and continue *)
+             match_line ~grammar ~stack:(d :: stack) ~len ~pos:end_ ~acc ~line
+               d.delim_patterns
+          | While ->
+             (* Subsume the remainder of the line into a span *)
+             ( List.rev ((Span(d.delim_name, String.length line)) :: acc)
+             , d :: stack )
        end
     | Include_scope _ :: _ -> error "Unimplemented"
     | Include_self :: pats ->
@@ -282,7 +294,12 @@ let rec match_line ~grammar ~stack ~len ~pos ~acc ~line rem_pats =
        | Some pats -> try_pats pats ~k
   in
   if pos > len then
-    (List.rev acc, stack) (* End of string reached *)
+    (* End of string reached *)
+    match stack with
+    | [] -> (List.rev acc, stack)
+    | { delim_kind = End; _ } :: _ -> (List.rev acc, stack)
+    (* If reached, this means that the while pattern wasn't matched *)
+    | { delim_kind = While; _ } :: stack -> (List.rev acc, stack)
   else
     (* No patterns have matched, so increment the position and try again *)
     let k () =
@@ -292,24 +309,34 @@ let rec match_line ~grammar ~stack ~len ~pos ~acc ~line rem_pats =
     | [] -> try_pats rem_pats ~k
     | delim :: stack' ->
        (* Try to match the delimiter's end pattern *)
-       match Pcre.exec ~pos ~rex:delim.delim_end line with
-       | exception Not_found -> try_pats rem_pats ~k
-       | subs ->
-          let (start, end_) = Pcre.get_substring_ofs subs 0 in
-          assert (start = pos);
-          let name = match delim.delim_content_name with
-            | Some name -> Some name
-            | None -> delim.delim_name
-          in
-          let acc = (Span(name, pos)) :: acc in
-          let acc =
-            handle_captures delim.delim_name end_ subs
-              delim.delim_end_captures acc
-          in
+       let end_match =
+         match Pcre.exec ~pos ~rex:delim.delim_end line with
+         | exception Not_found -> None
+         | subs ->
+            let start, end_ = Pcre.get_substring_ofs subs 0 in
+            assert (start = pos);
+            let name = match delim.delim_content_name with
+              | Some name -> Some name
+              | None -> delim.delim_name
+            in
+            let acc = (Span(name, pos)) :: acc in
+            let acc =
+              handle_captures delim.delim_name end_ subs
+                delim.delim_end_captures acc
+            in Some (end_, acc)
+       in
+       match delim.delim_kind, end_match with
+       | End, None -> try_pats rem_pats ~k
+       | End, Some (end_, acc) ->
           let acc = (Delim_close(delim, end_)) :: acc in
           (* Pop the delimiter off the stack and continue *)
           match_line ~grammar ~stack:stack' ~len ~pos:end_  ~acc ~line
             (next_pats grammar stack)
+       | While, Some (_, acc) ->
+          (* Subsume the remainder of the line into a span *)
+          ( List.rev ((Span(delim.delim_name, String.length line)) :: acc)
+          , stack )
+       | While, None -> try_pats rem_pats ~k
 
 let tokenize_line grammar stack line =
   match_line ~grammar ~stack ~len:(String.length line) ~pos:0 ~acc:[] ~line
