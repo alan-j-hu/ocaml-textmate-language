@@ -11,12 +11,13 @@ license: "MIT"
 homepage: "https://github.com/dosaylazy/ocaml-textmate-highlight"
 bug-reports: "https://github.com/dosaylazy/ocaml-textmate-highlight/issues"
 depends: [
-  "dune" {>= "2.6"}
+  "dune" {>= "2.7"}
   "ANSITerminal" {>= "0.8.2" & < "0.9"}
   "textmate-highlight" {< "0.3"}
+  "odoc" {with-doc}
 ]
 build: [
-  ["dune" "subst"] {pinned}
+  ["dune" "subst"] {dev}
   [
     "dune"
     "build"
