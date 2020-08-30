@@ -1,8 +1,3 @@
-open Tm_highlight
-
-type span = string list * string
-type line = span list
-type block = line list
 type style = string -> ANSITerminal.style list option
 type printer = ANSITerminal.style list -> string -> unit
 
@@ -49,29 +44,15 @@ let create_span scopes i j line =
 let rec highlight_tokens i acc line = function
   | [] -> List.rev acc
   | tok :: toks ->
-     let span = create_span tok.scopes i tok.ending line in
+     let span = create_span tok.Tm_highlight.scopes i tok.ending line in
      highlight_tokens tok.ending (span :: acc) line toks
-
-(** Maps over the list while keeping track of some state.
-
-    Discards the state because I don't need it. *)
-let rec map_fold f acc = function
-  | [] -> []
-  | x :: xs ->
-     let y, acc = f acc x in
-     y :: map_fold f acc xs
 
 let highlight_line t grammar stack line =
   (* Some patterns don't work if there isn't a newline *)
   let line = line ^ "\n" in
-  let tokens, stack = tokenize_line t grammar stack line in
+  let tokens, stack = Tm_highlight.tokenize_exn t grammar stack line in
   let spans = highlight_tokens 0 [] line tokens in
   create_line spans, stack
-
-let highlight_block t grammar code =
-  let lines = String.split_on_char '\n' code in
-  let a's = map_fold (highlight_line t grammar) empty lines in
-  create_block a's
 
 let read t grammar stack =
   let rec loop stack acc =

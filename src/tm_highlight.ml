@@ -53,7 +53,7 @@ type t = {
     by_scope_name : (string, grammar) Hashtbl.t;
   }
 
-exception Highlight_error of string
+exception Error of string
 
 let create () = {
     by_name = Hashtbl.create 23;
@@ -69,7 +69,7 @@ let find_by_name t name =
 
 let find_by_scope_name t = Hashtbl.find_opt t.by_scope_name
 
-let error msg = raise (Highlight_error msg)
+let error msg = raise (Error msg)
 
 let rec find key = function
   | [] -> None
@@ -220,8 +220,8 @@ let of_plist_exn plist =
   }
 
 type token = {
-    scopes : string list;
     ending : int;
+    scopes : string list;
   }
 
 type stack_elem = {
@@ -240,9 +240,9 @@ let rec add_scopes scopes = function
   | None :: xs -> add_scopes scopes xs
   | Some x :: xs -> add_scopes (x :: scopes) xs
 
-(** If the stack is empty, returns the main patterns associated with the
-    grammar. Otherwise, returns the patterns associated with the delimiter at
-    the top of the stack. *)
+(* If the stack is empty, returns the main patterns associated with the
+   grammar. Otherwise, returns the patterns associated with the delimiter at
+   the top of the stack. *)
 let next_pats grammar = function
   | [] -> grammar.patterns
   | s :: _ -> s.stack_delim.delim_patterns
@@ -310,16 +310,15 @@ let rec find_nested scope = function
      | Some x -> Some x
      | None -> find_nested scope repos
 
-(** Tokenizes a line according to the grammar.
+(* Tokenizes a line according to the grammar.
 
-    [t]: The collection of grammars.
-    [grammar]: The language grammar.
-    [stack]: The stack that keeps track of nested delimiters
-    [len]: The length of the string.
-    [pos]: The current index into the string.
-    [toks]: The list of tokens, with the rightmost ones at the front.
-    [line]: The string that is being matched and tokenized.
-    [rem_pats]: The remaining patterns yet to be tried *)
+   [t]: The collection of grammars.
+   [grammar]: The language grammar.
+   [stack]: The stack that keeps track of nested delimiters
+   [pos]: The current index into the string.
+   [toks]: The list of tokens, with the rightmost ones at the front.
+   [line]: The string that is being matched and tokenized.
+   [rem_pats]: The remaining patterns yet to be tried *)
 let rec match_line ~t ~grammar ~stack ~pos ~toks ~line rem_pats =
   let len = String.length line in
   let scopes, stk_pats, repos, cur_grammar = match stack with
@@ -387,7 +386,9 @@ let rec match_line ~t ~grammar ~stack ~pos ~toks ~line rem_pats =
        end
     | Include_scope name :: pats ->
        begin match find_by_scope_name t name with
-       | None -> error ("Unknown scope name " ^ name)
+       | None ->
+          (* Grammar not found; try the next pattern. *)
+          try_pats repos cur_grammar ~k pats
        | Some nested_grammar ->
           let k () = try_pats repos cur_grammar ~k pats in
           try_pats [nested_grammar.repository] nested_grammar
@@ -478,5 +479,5 @@ let rec match_line ~t ~grammar ~stack ~pos ~toks ~line rem_pats =
          try_delim se.stack_delim stack'
            ~k:(fun () -> try_pats repos se.stack_grammar rem_pats ~k)
 
-let tokenize_line t grammar stack line =
+let tokenize_exn t grammar stack line =
   match_line ~t ~grammar ~stack ~pos:0 ~toks:[] ~line (next_pats grammar stack)
