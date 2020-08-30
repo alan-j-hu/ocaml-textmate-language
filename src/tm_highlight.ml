@@ -408,8 +408,8 @@ let rec match_line ~t ~grammar ~stack ~len ~pos ~toks ~line rem_pats =
     | End, Some (end_, toks) ->
        let toks = { scope = delim.delim_name; ending = end_ } :: toks in
        (* Pop the delimiter off the stack and continue *)
-       match_line ~t ~grammar ~stack:stack' ~len ~pos:end_  ~toks ~line
-         (next_pats grammar stack)
+       match_line ~t ~grammar ~stack:stack' ~len ~pos:end_ ~toks ~line
+         (next_pats grammar stack')
     | While, Some (_, toks) ->
        (* Subsume the remainder of the line into a span *)
        (List.rev ({ scope = delim.delim_name; ending = len } :: toks), stack)
