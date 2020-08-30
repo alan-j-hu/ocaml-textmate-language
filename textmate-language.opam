@@ -7,6 +7,7 @@ maintainer: ["Alan Hu <hu.ala@northeastern.edu>"]
 authors: ["Alan Hu <hu.ala@northeastern.edu>"]
 license: "MIT"
 homepage: "https://github.com/dosaylazy/ocaml-textmate-language"
+doc: "https://dosaylazy.github.io/ocaml-textmate-language/"
 bug-reports: "https://github.com/dosaylazy/ocaml-textmate-language/issues"
 depends: [
   "dune" {>= "2.7"}

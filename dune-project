@@ -1,9 +1,10 @@
 (lang dune 2.7)
 (generate_opam_files true)
 (version 0.1.0)
-(license MIT)
 (authors "Alan Hu <hu.ala@northeastern.edu>")
 (maintainers "Alan Hu <hu.ala@northeastern.edu>")
+(license MIT)
+(documentation https://dosaylazy.github.io/ocaml-textmate-language/)
 (source (github dosaylazy/ocaml-textmate-language))
 (name textmate-language)
 
