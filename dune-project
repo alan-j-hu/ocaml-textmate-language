@@ -10,7 +10,11 @@
 
 (package
   (name textmate-language)
-  (synopsis "Parsing source code with TextMate grammars")
-  (description "Parsing source code with TextMate grammars.")
   (depends
-    (pcre (and (>= 7.3) (< 8.0)))))
+    (pcre (and (>= 7.3) (< 8.0))))
+  (synopsis "Parsing source code with TextMate grammars")
+  (description "
+Parsing source code with TextMate grammars.
+
+Note that this library uses PCRE regex, while TextMate uses the Oniguruma
+dialect."))
