@@ -53,6 +53,17 @@ type t = {
     by_scope_name : (string, grammar) Hashtbl.t;
   }
 
+type plist =
+  [ `Bool of bool
+  | `Data of string
+  | `Date of float * float option
+  | `Float of float
+  | `Int of int
+  | `String of string
+  | `Array of plist list
+  | `Dict of (string * plist) list
+  ]
+
 exception Error of string
 
 let create () = {
@@ -223,6 +234,10 @@ type token = {
     ending : int;
     scopes : string list;
   }
+
+let ending token = token.ending
+
+let scopes token = token.scopes
 
 type stack_elem = {
     stack_delim : delim;

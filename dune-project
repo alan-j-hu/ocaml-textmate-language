@@ -12,5 +12,4 @@
   (synopsis "Parsing source code with TextMate grammars")
   (description "Parsing source code with TextMate grammars.")
   (depends
-    (pcre (and (>= 7.4) (< 8.0)))
-    (plist-xml (< 0.3))))
+    (pcre (and (>= 7.3) (< 8.0)))))

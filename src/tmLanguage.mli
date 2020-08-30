@@ -11,6 +11,20 @@ exception Error of string
 [@ocaml.warn_on_literal_pattern]
 (** The error message is purely informational and is not to be matched on. *)
 
+type plist =
+  [ `Bool of bool
+  | `Data of string
+  | `Date of float * float option
+  | `Float of float
+  | `Int of int
+  | `String of string
+  | `Array of plist list
+  | `Dict of (string * plist) list
+  ]
+(** A plist document. This is the same plist type that is defined in the
+    {{:https://opam.ocaml.org/packages/plist-xml/} [plist-xml]} package (as of
+    version 0.2.0), but is reproduced here as not to depend on [plist-xml]. *)
+
 val create : unit -> t
 (** Create an empty collection of grammars. *)
 
@@ -23,22 +37,25 @@ val find_by_name : t -> string -> grammar option
 val find_by_scope_name : t -> string -> grammar option
 (** Finds for a grammar by its [scopeName] attribute. Case-sensitive. *)
 
-val of_plist_exn : Plist_xml.t -> grammar
+val of_plist_exn : plist -> grammar
 (** Reads a TextMate grammar from a plist file. Raises {!exception:Error} if
     the plist does not represent a valid TextMate grammar. *)
 
 val empty : stack
 (** The initial state of the code highlighter. *)
 
-type token = {
-    ending : int;
-    (** The index of the character right after the last character of the
-        token. *)
-    scopes : string list; (** The token's stack of scopes. *)
-  }
-(** A token of code. If [token] is the first token of the line, it spans the
-    substring from [0] to [token.ending]. If [token] succeeds a previous token
-    [prev], [token] spans the substring from [prev.ending] to [token.ending]. *)
+type token
+(** A token of code. *)
+
+val ending : token -> int
+(** The index of the character right after the last character of the token.
+
+    If [tok] is the first token of the line, it spans the substring from [0] to
+    [ending tok]. If [tok] succeeds a token [prev], [tok] spans the substring
+    from [ending prev] to [ending tok]. *)
+
+val scopes : token -> string list
+(** The token's stack of TextMate grammar scopes. *)
 
 val tokenize_exn : t -> grammar -> stack -> string -> token list * stack
 (** Usage: [let tokens, stack = tokenize_exn t grammar stack line]
@@ -53,8 +70,7 @@ val tokenize_exn : t -> grammar -> stack -> string -> token list * stack
     Postconditions:
 
     - [tokens] is always nonempty.
-    - The [ending] field of the last token in [tokens] is always
-      [String.length line].
+    - The [ending] of the last token in [tokens] is always [String.length line].
 
     Throws {!exception:Error} if it tries to access a local grammar repository
     that doesn't exist. Currently, it silently ignores inclusions of other

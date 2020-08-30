@@ -25,12 +25,13 @@ let print_block =
 let rec highlight_tokens i spans line = function
   | [] -> List.rev spans
   | tok :: toks ->
-     assert (tok.TmLanguage.ending >= i);
-     let text = String.sub line i (tok.ending - i) in
-     let scope = match tok.scopes with
+     let j = TmLanguage.ending tok in
+     assert (j >= i);
+     let text = String.sub line i (j - i) in
+     let scope = match TmLanguage.scopes tok with
        | [] -> []
        | scope :: _ -> String.split_on_char '.' scope
-     in highlight_tokens tok.ending ((scope, text) :: spans) line toks
+     in highlight_tokens j ((scope, text) :: spans) line toks
 
 let read t grammar stack =
   let rec loop stack lines =
@@ -45,7 +46,6 @@ let read t grammar stack =
   in loop stack []
 
 let () =
-  Printexc.record_backtrace true;
   if Array.length Sys.argv < 3 then
     prerr_endline "No language specified."
   else
