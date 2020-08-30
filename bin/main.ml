@@ -61,26 +61,26 @@ let rec map_fold f acc = function
      let y, acc = f acc x in
      y :: map_fold f acc xs
 
-let highlight_line grammar stack line =
+let highlight_line t grammar stack line =
   (* Some patterns don't work if there isn't a newline *)
   let line = line ^ "\n" in
-  let tokens, stack = tokenize_line grammar stack line in
+  let tokens, stack = tokenize_line t grammar stack line in
   let spans = highlight_tokens 0 [] line tokens in
   create_line spans, stack
 
-let highlight_block grammar code =
+let highlight_block t grammar code =
   let lines = String.split_on_char '\n' code in
-  let a's = map_fold (highlight_line grammar) empty lines in
+  let a's = map_fold (highlight_line t grammar) empty lines in
   create_block a's
 
-let read grammar t =
-  let rec loop t acc =
+let read t grammar stack =
+  let rec loop stack acc =
     match read_line () with
     | exception End_of_file -> List.rev acc
     | line ->
-       let line, t = highlight_line grammar t line in
-       loop t (line :: acc)
-  in loop t []
+       let line, stack = highlight_line t grammar stack line in
+       loop stack (line :: acc)
+  in loop stack []
 
 (* Color styles *)
 let style = function
@@ -103,16 +103,26 @@ let style = function
 
 let () =
   Printexc.record_backtrace true;
-  if Array.length Sys.argv < 2 then (
+  if Array.length Sys.argv < 3 then (
     prerr_endline "No grammar file specified.";
     exit 1
   ) else
-    let chan = open_in Sys.argv.(1) in
-    let plist =
-      Fun.protect (fun () -> Markup.channel chan |> Plist_xml.parse_exn)
-        ~finally:(fun () -> close_in chan)
-    in
-    let grammar = Tm_highlight.of_plist_exn plist in
-    read grammar Tm_highlight.empty
-    |> create_block
-    |> print_block style ANSITerminal.print_string
+    let source = Sys.argv.(1) in
+    let t = Tm_highlight.create () in
+    for i = 2 to Array.length Sys.argv - 1 do
+      let chan = open_in Sys.argv.(i) in
+      let plist =
+        Fun.protect (fun () -> Markup.channel chan |> Plist_xml.parse_exn)
+          ~finally:(fun () -> close_in chan)
+      in
+      let grammar = Tm_highlight.of_plist_exn plist in
+      Tm_highlight.add_grammar t grammar
+    done;
+    match Tm_highlight.find_by_name t source with
+    | None ->
+       prerr_endline ("Unknown language " ^ source);
+       exit 1
+    | Some grammar ->
+       read t grammar Tm_highlight.empty
+       |> create_block
+       |> print_block style ANSITerminal.print_string
