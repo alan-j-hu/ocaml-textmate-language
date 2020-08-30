@@ -282,8 +282,10 @@ let handle_captures default mat_start mat_end line captures tokens =
       ) captures (mat_start, [], tokens)
   in
   (* Pop the remaining captures off the stack *)
-  List.fold_left (fun tokens (ending, scope) -> { scope; ending } :: tokens)
-    tokens stack
+  List.fold_left (fun tokens (ending, scope) ->
+      let ending = if ending > mat_end then mat_end else ending in
+      { scope; ending } :: tokens
+    ) tokens stack
 
 let rec find_nested scope = function
   | [] -> None
