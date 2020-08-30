@@ -1,3 +1,0 @@
-(executable
-  (name main)
-  (libraries ANSITerminal pcre plist-xml textmate-language))

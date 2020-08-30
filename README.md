@@ -1,6 +1,4 @@
-The OCaml grammar located in `bin` was taken from
-https://github.com/textmate/ocaml.tmbundle.
+# ocaml-textmate-language
 
-To feed the highlighter its own dogfood:
-
-    cat bin/main.ml | dune exec bin/main.exe ocaml bin/OCaml.plist
+This library provides functions for reading TextMate grammars and parsing
+lines of source code.

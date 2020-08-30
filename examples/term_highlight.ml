@@ -1,7 +1,5 @@
-type style = string -> ANSITerminal.style list option
-type printer = ANSITerminal.style list -> string -> unit
-
-let get_classes spec =
+(* Split a scope on the dot. *)
+let split_scope spec =
   let toks = String.split_on_char '.' spec in
   let _, classes =
     List.fold_left (fun (toks, classes) tok ->
@@ -13,11 +11,7 @@ let get_classes spec =
 let create_span scopes text =
   match scopes with
   | [] -> [], text
-  | classes :: _ -> get_classes classes, text
-
-let create_line spans = spans
-
-let create_block lines = lines
+  | scope :: _ -> split_scope scope, text
 
 let rec get_styles style classes =
   match classes with
@@ -27,14 +21,14 @@ let rec get_styles style classes =
      | Some styles -> styles
      | None -> get_styles style classes
 
-let print_span style printer (classes, str) =
-  printer (get_styles style classes) str
+let print_span style (classes, str) =
+  ANSITerminal.print_string (get_styles style classes) str
 
-let print_line style printer spans =
-  List.iter (print_span style printer) spans
+let print_line style spans =
+  List.iter (print_span style) spans
 
-let print_block style printer lines =
-  List.iter (print_line style printer) lines
+let print_block style lines =
+  List.iter (print_line style) lines
 
 let create_span scopes i j line =
   assert (j >= i);
@@ -52,7 +46,7 @@ let highlight_line t grammar stack line =
   let line = line ^ "\n" in
   let tokens, stack = TmLanguage.tokenize_exn t grammar stack line in
   let spans = highlight_tokens 0 [] line tokens in
-  create_line spans, stack
+  spans, stack
 
 let read t grammar stack =
   let rec loop stack acc =
@@ -69,6 +63,7 @@ let style = function
   | "constant.language.boolean" -> Some [ANSITerminal.cyan]
   | "comment" -> Some [ANSITerminal.magenta]
   | "constant.numeric" -> Some [ANSITerminal.blue]
+  | "entity.name.tag.label" -> Some [ANSITerminal.cyan]
   | "entity.name.type.variant" -> Some [ANSITerminal.Bold]
   | "invalid" -> Some [ANSITerminal.red]
   | "keyword.control" -> Some [ANSITerminal.magenta]
@@ -79,14 +74,12 @@ let style = function
   | "punctuation.definition.comment" -> Some [ANSITerminal.cyan]
   | "punctuation.definition.string" -> Some [ANSITerminal.magenta]
   | "string.quoted" -> Some [ANSITerminal.magenta]
-  | "variable.parameter.labeled" | "variable.parameter.optional" ->
-     Some [ANSITerminal.cyan]
   | _ -> None
 
 let () =
   Printexc.record_backtrace true;
   if Array.length Sys.argv < 3 then (
-    prerr_endline "No grammar file specified.";
+    prerr_endline "No language specified.";
     exit 1
   ) else
     let source = Sys.argv.(1) in
@@ -105,6 +98,4 @@ let () =
        prerr_endline ("Unknown language " ^ source);
        exit 1
     | Some grammar ->
-       read t grammar TmLanguage.empty
-       |> create_block
-       |> print_block style ANSITerminal.print_string
+       read t grammar TmLanguage.empty |> print_block style
