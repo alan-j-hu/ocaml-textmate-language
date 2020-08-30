@@ -298,8 +298,8 @@ let handle_captures scopes default mat_start mat_end line captures tokens =
     | [] -> tokens
     | (ending, scope) :: stack ->
        pop
-         ({ scopes = add_scopes scopes (new_scopes [scope] stack); ending }
-          :: tokens)
+         ({ scopes = add_scopes scopes (new_scopes [scope] stack)
+          ; ending } :: tokens)
          stack
   in pop tokens stack
 
@@ -322,7 +322,8 @@ let rec find_nested scope = function
 let rec match_line ~t ~grammar ~stack ~pos ~toks ~line rem_pats =
   let len = String.length line in
   let scopes, stk_pats, repos, cur_grammar = match stack with
-    | [] -> [grammar.scope_name], grammar.patterns, [grammar.repository], grammar
+    | [] ->
+       [grammar.scope_name], grammar.patterns, [grammar.repository], grammar
     | se :: _ ->
        let d = se.stack_delim in
        ( se.stack_scopes
@@ -363,7 +364,8 @@ let rec match_line ~t ~grammar ~stack ~pos ~toks ~line rem_pats =
               d.delim_begin_captures toks
           in
           let toks =
-            { scopes = add_scopes scopes [d.delim_name]; ending = end_ } :: toks
+            { scopes = add_scopes scopes [d.delim_name]
+            ; ending = end_ } :: toks
           in
           let se =
             { stack_delim = d
@@ -380,7 +382,8 @@ let rec match_line ~t ~grammar ~stack ~pos ~toks ~line rem_pats =
           | While ->
              (* Subsume the remainder of the line into a span *)
              ( List.rev
-                 ({ scopes = add_scopes scopes [d.delim_name; d.delim_content_name]
+                 ({ scopes =
+                      add_scopes scopes [d.delim_name; d.delim_content_name]
                   ; ending = len } :: toks)
              , se :: stack )
        end

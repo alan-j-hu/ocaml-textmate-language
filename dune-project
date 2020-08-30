@@ -4,14 +4,12 @@
 (license MIT)
 (authors "Alan Hu <hu.ala@northeastern.edu>")
 (maintainers "Alan Hu <hu.ala@northeastern.edu>")
-(source (github dosaylazy/ocaml-textmate-highlight))
-(name textmate-highlight)
+(source (github dosaylazy/ocaml-textmate-language))
 
 (package
-  (name textmate-highlight)
-  (synopsis "Syntax highlighting with TextMate grammars")
-  (description "This library generates highlighted HTML fragments from TextMate
-grammars.")
+  (name textmate-language)
+  (synopsis "Parsing source code with TextMate grammars")
+  (description "Parsing source code with TextMate grammars.")
   (depends
     (pcre (and (>= 7.4) (< 8.0)))
     (plist-xml (< 0.3))))

@@ -1,4 +1,4 @@
 (library
-  (name tm_highlight)
-  (public_name textmate-highlight)
+  (name tmLanguage)
+  (public_name textmate-language)
   (libraries pcre plist-xml))

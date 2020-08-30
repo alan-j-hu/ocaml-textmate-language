@@ -44,13 +44,13 @@ let create_span scopes i j line =
 let rec highlight_tokens i acc line = function
   | [] -> List.rev acc
   | tok :: toks ->
-     let span = create_span tok.Tm_highlight.scopes i tok.ending line in
+     let span = create_span tok.TmLanguage.scopes i tok.ending line in
      highlight_tokens tok.ending (span :: acc) line toks
 
 let highlight_line t grammar stack line =
   (* Some patterns don't work if there isn't a newline *)
   let line = line ^ "\n" in
-  let tokens, stack = Tm_highlight.tokenize_exn t grammar stack line in
+  let tokens, stack = TmLanguage.tokenize_exn t grammar stack line in
   let spans = highlight_tokens 0 [] line tokens in
   create_line spans, stack
 
@@ -90,21 +90,21 @@ let () =
     exit 1
   ) else
     let source = Sys.argv.(1) in
-    let t = Tm_highlight.create () in
+    let t = TmLanguage.create () in
     for i = 2 to Array.length Sys.argv - 1 do
       let chan = open_in Sys.argv.(i) in
       let plist =
         Fun.protect (fun () -> Markup.channel chan |> Plist_xml.parse_exn)
           ~finally:(fun () -> close_in chan)
       in
-      let grammar = Tm_highlight.of_plist_exn plist in
-      Tm_highlight.add_grammar t grammar
+      let grammar = TmLanguage.of_plist_exn plist in
+      TmLanguage.add_grammar t grammar
     done;
-    match Tm_highlight.find_by_name t source with
+    match TmLanguage.find_by_name t source with
     | None ->
        prerr_endline ("Unknown language " ^ source);
        exit 1
     | Some grammar ->
-       read t grammar Tm_highlight.empty
+       read t grammar TmLanguage.empty
        |> create_block
        |> print_block style ANSITerminal.print_string
