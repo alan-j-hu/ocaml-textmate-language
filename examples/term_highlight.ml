@@ -25,14 +25,12 @@ let print_block =
 let rec highlight_tokens i spans line = function
   | [] -> List.rev spans
   | tok :: toks ->
-     let span =
-       assert (tok.TmLanguage.ending >= i);
-       let text = String.sub line i (tok.ending - i) in
-       match tok.scopes with
-       | [] -> [], text
-       | scope :: _ -> String.split_on_char '.' scope, text
-     in
-     highlight_tokens tok.ending (span :: spans) line toks
+     assert (tok.TmLanguage.ending >= i);
+     let text = String.sub line i (tok.ending - i) in
+     let scope = match tok.scopes with
+       | [] -> []
+       | scope :: _ -> String.split_on_char '.' scope
+     in highlight_tokens tok.ending ((scope, text) :: spans) line toks
 
 let read t grammar stack =
   let rec loop stack lines =
