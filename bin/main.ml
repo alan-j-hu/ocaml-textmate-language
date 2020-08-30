@@ -15,10 +15,10 @@ let get_classes spec =
       ) ([], []) toks
   in classes
 
-let create_span name text =
-  match name with
-  | None -> [], text
-  | Some classes -> get_classes classes, text
+let create_span scopes text =
+  match scopes with
+  | [] -> [], text
+  | classes :: _ -> get_classes classes, text
 
 let create_line spans = spans
 
@@ -41,15 +41,15 @@ let print_line style printer spans =
 let print_block style printer lines =
   List.iter (print_line style printer) lines
 
-let create_span name i j line =
+let create_span scopes i j line =
   assert (j >= i);
   let inner_text = String.sub line i (j - i) in
-  create_span name inner_text
+  create_span scopes inner_text
 
 let rec highlight_tokens i acc line = function
   | [] -> List.rev acc
   | tok :: toks ->
-     let span = create_span tok.scope i tok.ending line in
+     let span = create_span tok.scopes i tok.ending line in
      highlight_tokens tok.ending (span :: acc) line toks
 
 (** Maps over the list while keeping track of some state.
@@ -93,6 +93,7 @@ let style = function
   | "keyword.control" -> Some [ANSITerminal.magenta]
   | "keyword.operator" -> Some [ANSITerminal.yellow]
   | "keyword" -> Some [ANSITerminal.Bold]
+  | "support.other.module" -> Some [ANSITerminal.green]
   | "meta.module-reference" -> Some [ANSITerminal.green]
   | "punctuation.definition.comment" -> Some [ANSITerminal.cyan]
   | "punctuation.definition.string" -> Some [ANSITerminal.magenta]

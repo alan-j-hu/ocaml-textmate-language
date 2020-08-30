@@ -28,7 +28,7 @@ val empty : stack
 (** The initial state of the code highlighter. *)
 
 type token = {
-    scope : string option;
+    scopes : string list;
     ending : int;
   }
 

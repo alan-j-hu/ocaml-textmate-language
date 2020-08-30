@@ -220,7 +220,7 @@ let of_plist_exn plist =
   }
 
 type token = {
-    scope : string option;
+    scopes : string list;
     ending : int;
   }
 
@@ -228,11 +228,17 @@ type stack_elem = {
     stack_delim : delim;
     stack_grammar : grammar;
     stack_repos : (string, repo_item) Hashtbl.t list;
+    stack_scopes : string list;
   }
 
 type stack = stack_elem list
 
 let empty = []
+
+let rec add_scopes scopes = function
+  | [] -> scopes
+  | None :: xs -> add_scopes scopes xs
+  | Some x :: xs -> add_scopes (x :: scopes) xs
 
 (** If the stack is empty, returns the main patterns associated with the
     grammar. Otherwise, returns the patterns associated with the delimiter at
@@ -241,7 +247,11 @@ let next_pats grammar = function
   | [] -> grammar.patterns
   | s :: _ -> s.stack_delim.delim_patterns
 
-let handle_captures default mat_start mat_end line captures tokens =
+let handle_captures scopes default mat_start mat_end line captures tokens =
+  let rec new_scopes acc = function
+    | [] -> acc
+    | (_, scope) :: xs -> new_scopes (scope :: acc) xs
+  in
   let _, stack, tokens =
     (* Regex captures are ordered by their left parentheses. Do a depth-first
        preorder traversal by keeping a stack of captures. *)
@@ -258,7 +268,8 @@ let handle_captures default mat_start mat_end line captures tokens =
               let cap_end = if cap_end > mat_end then mat_end else cap_end in
               ( cap_start
               , [(cap_end, capture.capture_name)]
-              , { scope = default; ending = cap_start } :: tokens )
+              , { scopes = add_scopes scopes [default]; ending = cap_start }
+                :: tokens )
             with Not_found | Invalid_argument _ -> (start, [], tokens))
         | (top_end, top_name) :: stack' ->
            try
@@ -272,20 +283,25 @@ let handle_captures default mat_start mat_end line captures tokens =
                let cap_end = if cap_end > under then under else cap_end in
                ( top_end
                , (cap_end, capture.capture_name) :: stack'
-               , { scope = top_name; ending = cap_start } :: tokens )
+               , { scopes = add_scopes scopes (new_scopes [top_name] stack')
+                 ; ending = cap_start } :: tokens )
              else
                let cap_end = if cap_end > top_end then top_end else cap_end in
                ( cap_start
                , (cap_end, capture.capture_name) :: stack
-               , { scope = top_name; ending = cap_start } :: tokens )
+               , { scopes = add_scopes scopes (new_scopes [top_name] stack)
+                 ; ending = cap_start } :: tokens )
            with Not_found | Invalid_argument _ -> (start, stack, tokens)
       ) captures (mat_start, [], tokens)
   in
-  (* Pop the remaining captures off the stack *)
-  List.fold_left (fun tokens (ending, scope) ->
-      let ending = if ending > mat_end then mat_end else ending in
-      { scope; ending } :: tokens
-    ) tokens stack
+  let rec pop tokens = function
+    | [] -> tokens
+    | (ending, scope) :: stack ->
+       pop
+         ({ scopes = add_scopes scopes (new_scopes [scope] stack); ending }
+          :: tokens)
+         stack
+  in pop tokens stack
 
 let rec find_nested scope = function
   | [] -> None
@@ -304,14 +320,13 @@ let rec find_nested scope = function
     [toks]: The list of tokens, with the rightmost ones at the front.
     [line]: The string that is being matched and tokenized.
     [rem_pats]: The remaining patterns yet to be tried *)
-let rec match_line ~t ~grammar ~stack ~len ~pos ~toks ~line rem_pats =
-  let default, stk_pats, repos, cur_grammar = match stack with
-    | [] -> None, grammar.patterns, [grammar.repository], grammar
+let rec match_line ~t ~grammar ~stack ~pos ~toks ~line rem_pats =
+  let len = String.length line in
+  let scopes, stk_pats, repos, cur_grammar = match stack with
+    | [] -> [grammar.scope_name], grammar.patterns, [grammar.repository], grammar
     | se :: _ ->
        let d = se.stack_delim in
-       ( (match d.delim_content_name with
-          | Some name -> Some name
-          | None -> d.delim_name)
+       ( se.stack_scopes
        , d.delim_patterns
        , se.stack_repos
        , se.stack_grammar )
@@ -326,10 +341,14 @@ let rec match_line ~t ~grammar ~stack ~len ~pos ~toks ~line rem_pats =
        | subs ->
           let start, end_ = Pcre.get_substring_ofs subs 0 in
           assert (start = pos);
-          let toks = { scope = default; ending = pos } :: toks in
-          let toks = handle_captures m.name pos end_ subs m.captures toks in
-          let toks = { scope = m.name; ending = end_ } :: toks in
-          match_line ~t ~grammar ~stack ~len ~pos:end_ ~toks ~line
+          let toks = { scopes; ending = pos } :: toks in
+          let toks =
+            handle_captures scopes m.name pos end_ subs m.captures toks
+          in
+          let toks =
+            { scopes = add_scopes scopes [m.name]; ending = end_ } :: toks
+          in
+          match_line ~t ~grammar ~stack ~pos:end_ ~toks ~line
             (next_pats grammar stack)
        end
     | Delim d :: pats ->
@@ -339,25 +358,31 @@ let rec match_line ~t ~grammar ~stack ~len ~pos ~toks ~line rem_pats =
        | subs ->
           let start, end_ = Pcre.get_substring_ofs subs 0 in
           assert (start = pos);
-          let toks = { scope = default; ending = pos } :: toks in
+          let toks = { scopes; ending = pos } :: toks in
           let toks =
-            handle_captures d.delim_name pos end_ subs
+            handle_captures scopes d.delim_name pos end_ subs
               d.delim_begin_captures toks
           in
-          let toks = { scope = d.delim_name; ending = end_ } :: toks in
+          let toks =
+            { scopes = add_scopes scopes [d.delim_name]; ending = end_ } :: toks
+          in
           let se =
             { stack_delim = d
             ; stack_repos = repos
-            ; stack_grammar = cur_grammar }
+            ; stack_grammar = cur_grammar
+            ; stack_scopes =
+                add_scopes scopes [d.delim_name; d.delim_content_name] }
           in
           match d.delim_kind with
           | End ->
              (* Push the delimiter on the stack and continue *)
-             match_line ~t ~grammar ~stack:(se :: stack) ~len ~pos:end_ ~toks
-               ~line d.delim_patterns
+             match_line ~t ~grammar ~stack:(se :: stack) ~pos:end_ ~toks ~line
+               d.delim_patterns
           | While ->
              (* Subsume the remainder of the line into a span *)
-             ( List.rev ({ scope = d.delim_name; ending = len } :: toks)
+             ( List.rev
+                 ({ scopes = add_scopes scopes [d.delim_name; d.delim_content_name]
+                  ; ending = len } :: toks)
              , se :: stack )
        end
     | Include_scope name :: pats ->
@@ -393,47 +418,55 @@ let rec match_line ~t ~grammar ~stack ~len ~pos ~toks ~line rem_pats =
       | subs ->
          let start, end_ = Pcre.get_substring_ofs subs 0 in
          assert (start = pos);
-         let name = match delim.delim_content_name with
-           | Some name -> Some name
-           | None -> delim.delim_name
-         in
-         let toks = { scope = name; ending = pos } :: toks in
          let toks =
-           handle_captures delim.delim_name pos end_ subs
+           { scopes =
+               add_scopes scopes [delim.delim_name; delim.delim_content_name]
+           ; ending = pos } :: toks in
+         let toks =
+           handle_captures scopes delim.delim_name pos end_ subs
              delim.delim_end_captures toks
          in Some (end_, toks)
     in
     match delim.delim_kind, end_match with
     | End, None -> k ()
     | End, Some (end_, toks) ->
-       let toks = { scope = delim.delim_name; ending = end_ } :: toks in
+       let toks =
+         { scopes = add_scopes scopes [delim.delim_name]
+         ; ending = end_ } :: toks
+       in
        (* Pop the delimiter off the stack and continue *)
-       match_line ~t ~grammar ~stack:stack' ~len ~pos:end_ ~toks ~line
+       match_line ~t ~grammar ~stack:stack' ~pos:end_ ~toks ~line
          (next_pats grammar stack')
     | While, Some (_, toks) ->
        (* Subsume the remainder of the line into a span *)
-       (List.rev ({ scope = delim.delim_name; ending = len } :: toks), stack)
+       ( List.rev
+           ({ scopes = add_scopes scopes [delim.delim_name]; ending = len }
+            :: toks)
+       , stack )
     | While, None -> k ()
   in
   if pos > len then
     (* End of string reached *)
     match stack with
-    | [] -> (List.rev ({ scope = None; ending = len } :: toks), stack)
+    | [] -> (List.rev ({ scopes; ending = len } :: toks), stack)
     | se :: stack' ->
        let d = se.stack_delim in
        match d.delim_kind with
        | End ->
-          (List.rev ({ scope = d.delim_name; ending = len } :: toks), stack)
+          ( List.rev
+              ({ scopes = add_scopes scopes [d.delim_name]
+               ; ending = len } :: toks)
+          , stack )
        (* If reached, this means that the while pattern wasn't matched. Retry
           the line. *)
        | While ->
-          match_line ~t ~grammar ~stack ~len ~pos:0 ~toks:[] ~line
+          match_line ~t ~grammar ~stack ~pos:0 ~toks:[] ~line
             (next_pats grammar stack')
   else
     (* No patterns have matched, so increment the position and try again *)
     let k () =
-      match_line ~t ~grammar:cur_grammar
-        ~stack ~len ~pos:(pos + 1) ~toks ~line stk_pats
+      match_line ~t ~grammar:cur_grammar ~stack ~pos:(pos + 1) ~toks ~line
+        stk_pats
     in
     match stack with
     | [] -> try_pats repos grammar rem_pats ~k
@@ -446,5 +479,4 @@ let rec match_line ~t ~grammar ~stack ~len ~pos ~toks ~line rem_pats =
            ~k:(fun () -> try_pats repos se.stack_grammar rem_pats ~k)
 
 let tokenize_line t grammar stack line =
-  match_line ~t ~grammar ~stack ~len:(String.length line) ~pos:0 ~toks:[] ~line
-    (next_pats grammar stack)
+  match_line ~t ~grammar ~stack ~pos:0 ~toks:[] ~line (next_pats grammar stack)
