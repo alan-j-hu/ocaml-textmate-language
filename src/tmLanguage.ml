@@ -325,6 +325,20 @@ let rec find_nested scope = function
      | Some x -> Some x
      | None -> find_nested scope repos
 
+let remove_empties =
+  let rec go acc = function
+    | [] -> acc
+    | tok :: toks ->
+       let prev = match toks with
+         | [] -> 0
+         | tok :: _ -> tok.ending
+       in
+       if tok.ending = prev then
+         go acc toks
+       else
+         go (tok :: acc) toks
+  in go []
+
 (* Tokenizes a line according to the grammar.
 
    [t]: The collection of grammars.
@@ -396,7 +410,7 @@ let rec match_line ~t ~grammar ~stack ~pos ~toks ~line rem_pats =
                d.delim_patterns
           | While ->
              (* Subsume the remainder of the line into a span *)
-             ( List.rev
+             ( remove_empties
                  ({ scopes =
                       add_scopes scopes [d.delim_name; d.delim_content_name]
                   ; ending = len } :: toks)
@@ -458,7 +472,7 @@ let rec match_line ~t ~grammar ~stack ~pos ~toks ~line rem_pats =
          (next_pats grammar stack')
     | While, Some (_, toks) ->
        (* Subsume the remainder of the line into a span *)
-       ( List.rev
+       ( remove_empties
            ({ scopes = add_scopes scopes [delim.delim_name]; ending = len }
             :: toks)
        , stack )
@@ -467,12 +481,12 @@ let rec match_line ~t ~grammar ~stack ~pos ~toks ~line rem_pats =
   if pos > len then
     (* End of string reached *)
     match stack with
-    | [] -> (List.rev ({ scopes; ending = len } :: toks), stack)
+    | [] -> (remove_empties ({ scopes; ending = len } :: toks), stack)
     | se :: stack' ->
        let d = se.stack_delim in
        match d.delim_kind with
        | End ->
-          ( List.rev
+          ( remove_empties
               ({ scopes = add_scopes scopes [d.delim_name]
                ; ending = len } :: toks)
           , stack )

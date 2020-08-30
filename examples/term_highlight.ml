@@ -26,7 +26,7 @@ let rec highlight_tokens i spans line = function
   | [] -> List.rev spans
   | tok :: toks ->
      let j = TmLanguage.ending tok in
-     assert (j >= i);
+     assert (j > i);
      let text = String.sub line i (j - i) in
      let scope = match TmLanguage.scopes tok with
        | [] -> []
