@@ -5,6 +5,7 @@
 (authors "Alan Hu <hu.ala@northeastern.edu>")
 (maintainers "Alan Hu <hu.ala@northeastern.edu>")
 (source (github dosaylazy/ocaml-textmate-language))
+(name textmate-language)
 
 (package
   (name textmate-language)
