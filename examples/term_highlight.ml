@@ -47,7 +47,10 @@ let read t grammar stack =
 
 let () =
   if Array.length Sys.argv < 3 then
-    prerr_endline "No language specified."
+    prerr_endline
+      "Read and highlight code from stdin.\
+       \n\n\
+       Usage: <exename> <language-name> <plist-grammar-files>..."
   else
     let source = Sys.argv.(1) in
     let t = TmLanguage.create () in
