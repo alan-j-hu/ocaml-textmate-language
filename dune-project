@@ -4,17 +4,17 @@
 (authors "Alan Hu <hu.ala@northeastern.edu>")
 (maintainers "Alan Hu <hu.ala@northeastern.edu>")
 (license MIT)
-(documentation https://dosaylazy.github.io/ocaml-textmate-language/)
-(source (github dosaylazy/ocaml-textmate-language))
+(documentation https://alan-j-hu.github.io/ocaml-textmate-language/)
+(source (github alan-j-hu/ocaml-textmate-language))
 (name textmate-language)
 
 (package
   (name textmate-language)
   (depends
     (pcre (and (>= 7.3) (< 8.0))))
-  (synopsis "Parsing source code with TextMate grammars")
+  (synopsis "Tokenizing source code with TextMate grammars")
   (description "
-Parsing source code with TextMate grammars.
+Tokenizing source code with TextMate grammars.
 
 Note that this library uses PCRE regex, while TextMate uses the Oniguruma
 dialect."))
