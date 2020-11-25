@@ -4,10 +4,7 @@ version: "0.1.0"
 synopsis: "Tokenizing source code with TextMate grammars"
 description: """
 
-Tokenizing source code with TextMate grammars.
-
-Note that this library uses PCRE regex, while TextMate uses the Oniguruma
-dialect."""
+Tokenizing source code with TextMate grammars."""
 maintainer: ["Alan Hu <hu.ala@northeastern.edu>"]
 authors: ["Alan Hu <hu.ala@northeastern.edu>"]
 license: "MIT"
@@ -16,7 +13,7 @@ doc: "https://alan-j-hu.github.io/ocaml-textmate-language/"
 bug-reports: "https://github.com/alan-j-hu/ocaml-textmate-language/issues"
 depends: [
   "dune" {>= "2.7"}
-  "pcre" {>= "7.3" & < "8.0"}
+  "oniguruma" {< "0.2.0"}
   "odoc" {with-doc}
 ]
 build: [

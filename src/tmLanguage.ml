@@ -4,17 +4,19 @@ type capture = {
 
 module IntMap = Map.Make(Int)
 
+type regex = Oniguruma.Encoding.utf8 Oniguruma.t
+
 type match_ = {
   name : string option;
-  pattern : Pcre.regexp;
+  pattern : regex;
   captures : capture IntMap.t;
 }
 
 type delim_kind = End | While
 
 type delim = {
-  delim_begin : Pcre.regexp;
-  delim_end : Pcre.regexp;
+  delim_begin : regex;
+  delim_end : regex;
   delim_patterns : pattern list;
   delim_name : string option;
   delim_content_name : string option;
@@ -107,16 +109,15 @@ let get_list f = function
   | `Array l -> List.map f l
   | _ -> error "Type error: Expected list."
 
-let iflags = Pcre.cflags [`ANCHORED; `DOLLAR_ENDONLY; `UTF8]
-
 let of_plist_exn plist =
-  let compile_regex s =
-    try Pcre.regexp ~iflags s with
-    | Pcre.Error(Pcre.BadPattern(msg, pos)) ->
-      error (
-        "Malformed regex " ^ s ^ ": "
-        ^ msg ^ " at pos " ^ Int.to_string pos ^ "."
-      )
+  let compile_regex re =
+    match
+      Oniguruma.create
+        re Oniguruma.Options.none
+        Oniguruma.Encoding.utf8 Oniguruma.Syntax.default
+    with
+    | Error msg -> error (re ^ ": " ^ msg)
+    | Ok re -> re
   in
   let rec get_captures acc = function
     | [] -> acc
@@ -262,7 +263,7 @@ let next_pats grammar = function
   | [] -> grammar.patterns
   | s :: _ -> s.stack_delim.delim_patterns
 
-let handle_captures scopes default mat_start mat_end line captures tokens =
+let handle_captures scopes default mat_start mat_end region captures tokens =
   let rec new_scopes acc = function
     | [] -> acc
     | (_, scope) :: xs -> new_scopes (scope :: acc) xs
@@ -275,20 +276,20 @@ let handle_captures scopes default mat_start mat_end line captures tokens =
            parent. The match is capped at the boundary for the parent. Is this
            the right decision to make? Clearly the writer of the grammar
            intended for the capture to exceed the parent in this case. *)
-        match stack with
-        | [] ->
-          (try
-             let cap_start, cap_end = Pcre.get_substring_ofs line idx in
-             let cap_start = if cap_start < start then start else cap_start in
-             let cap_end = if cap_end > mat_end then mat_end else cap_end in
-             ( cap_start
-             , [(cap_end, capture.capture_name)]
-             , { scopes = add_scopes scopes [default]; ending = cap_start }
-               :: tokens )
-           with Not_found | Invalid_argument _ -> (start, [], tokens))
-        | (top_end, top_name) :: stack' ->
-          try
-            let cap_start, cap_end = Pcre.get_substring_ofs line idx in
+        let cap_start = Oniguruma.Region.capture_beg region idx in
+        let cap_end = Oniguruma.Region.capture_end region idx in
+        if cap_start = -1 then
+          (start, [], tokens)
+        else
+          match stack with
+          | [] ->
+            let cap_start = if cap_start < start then start else cap_start in
+            let cap_end = if cap_end > mat_end then mat_end else cap_end in
+            ( cap_start
+            , [(cap_end, capture.capture_name)]
+            , { scopes = add_scopes scopes [default]; ending = cap_start }
+              :: tokens )
+          | (top_end, top_name) :: stack' ->
             let cap_start = if cap_start < start then start else cap_start in
             if cap_start >= top_end then
               let under = match stack' with
@@ -306,7 +307,6 @@ let handle_captures scopes default mat_start mat_end line captures tokens =
               , (cap_end, capture.capture_name) :: stack
               , { scopes = add_scopes scopes (new_scopes [top_name] stack)
                 ; ending = cap_start } :: tokens )
-          with Not_found | Invalid_argument _ -> (start, stack, tokens)
       ) captures (mat_start, [], tokens)
   in
   let rec pop tokens = function
@@ -365,14 +365,17 @@ let rec match_line ~t ~grammar ~stack ~pos ~toks ~line rem_pats =
   let rec try_pats repos cur_grammar ~k = function
     | [] -> k () (* No patterns have matched, so call the continuation *)
     | Match m :: pats ->
-      begin match Pcre.exec ~pos ~rex:m.pattern line with
-        | exception Not_found -> try_pats repos cur_grammar ~k pats
-        | subs ->
-          let start, end_ = Pcre.get_substring_ofs subs 0 in
+      begin match
+          Oniguruma.match_ m.pattern line pos Oniguruma.Options.none
+        with
+        | None -> try_pats repos cur_grammar ~k pats
+        | Some region ->
+          let start = Oniguruma.Region.capture_beg region 0 in
+          let end_ = Oniguruma.Region.capture_end region 0 in
           assert (start = pos);
           let toks = { scopes; ending = pos } :: toks in
           let toks =
-            handle_captures scopes m.name pos end_ subs m.captures toks
+            handle_captures scopes m.name pos end_ region m.captures toks
           in
           let toks =
             { scopes = add_scopes scopes [m.name]; ending = end_ } :: toks
@@ -382,14 +385,17 @@ let rec match_line ~t ~grammar ~stack ~pos ~toks ~line rem_pats =
       end
     | Delim d :: pats ->
       (* Try to match the delimiter's begin pattern *)
-      begin match Pcre.exec ~pos ~rex:d.delim_begin line with
-        | exception Not_found -> try_pats repos cur_grammar ~k pats
-        | subs ->
-          let start, end_ = Pcre.get_substring_ofs subs 0 in
+      begin match
+          Oniguruma.match_ d.delim_begin line pos Oniguruma.Options.none
+        with
+        | None -> try_pats repos cur_grammar ~k pats
+        | Some region ->
+          let start = Oniguruma.Region.capture_beg region 0 in
+          let end_ = Oniguruma.Region.capture_end region 0 in
           assert (start = pos);
           let toks = { scopes; ending = pos } :: toks in
           let toks =
-            handle_captures scopes d.delim_name pos end_ subs
+            handle_captures scopes d.delim_name pos end_ region
               d.delim_begin_captures toks
           in
           let toks =
@@ -446,17 +452,20 @@ let rec match_line ~t ~grammar ~stack ~pos ~toks ~line rem_pats =
   let try_delim delim stack' ~k =
     (* Try to match the delimiter's end pattern *)
     let end_match =
-      match Pcre.exec ~pos ~rex:delim.delim_end line with
-      | exception Not_found -> None
-      | subs ->
-        let start, end_ = Pcre.get_substring_ofs subs 0 in
+      match
+        Oniguruma.match_ delim.delim_end line pos Oniguruma.Options.none
+      with
+      | None -> None
+      | Some region ->
+        let start = Oniguruma.Region.capture_beg region 0 in
+        let end_ = Oniguruma.Region.capture_end region 0 in
         assert (start = pos);
         let toks =
           { scopes =
               add_scopes scopes [delim.delim_name; delim.delim_content_name]
           ; ending = pos } :: toks in
         let toks =
-          handle_captures scopes delim.delim_name pos end_ subs
+          handle_captures scopes delim.delim_name pos end_ region
             delim.delim_end_captures toks
         in Some (end_, toks)
     in

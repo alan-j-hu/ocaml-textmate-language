@@ -11,10 +11,7 @@
 (package
  (name textmate-language)
  (depends
-  (pcre (and (>= 7.3) (< 8.0))))
+  (oniguruma (< 0.2.0)))
  (synopsis "Tokenizing source code with TextMate grammars")
  (description "
-Tokenizing source code with TextMate grammars.
-
-Note that this library uses PCRE regex, while TextMate uses the Oniguruma
-dialect."))
+Tokenizing source code with TextMate grammars."))
