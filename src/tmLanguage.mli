@@ -23,7 +23,7 @@ type plist =
   ]
 (** A plist document. This is the same plist type that is defined in the
     {{:https://opam.ocaml.org/packages/plist-xml/} [plist-xml]} package (as of
-    version 0.2.0), but is reproduced here as not to depend on [plist-xml]. *)
+    version 0.3.0), but is reproduced here as not to depend on [plist-xml]. *)
 
 val create : unit -> t
 (** Create an empty collection of grammars. *)

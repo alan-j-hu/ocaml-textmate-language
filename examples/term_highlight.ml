@@ -25,24 +25,24 @@ let print_block =
 let rec highlight_tokens i spans line = function
   | [] -> List.rev spans
   | tok :: toks ->
-     let j = TmLanguage.ending tok in
-     assert (j > i);
-     let text = String.sub line i (j - i) in
-     let scope = match TmLanguage.scopes tok with
-       | [] -> []
-       | scope :: _ -> String.split_on_char '.' scope
-     in highlight_tokens j ((scope, text) :: spans) line toks
+    let j = TmLanguage.ending tok in
+    assert (j > i);
+    let text = String.sub line i (j - i) in
+    let scope = match TmLanguage.scopes tok with
+      | [] -> []
+      | scope :: _ -> String.split_on_char '.' scope
+    in highlight_tokens j ((scope, text) :: spans) line toks
 
 let read t grammar stack =
   let rec loop stack lines =
     match read_line () with
     | exception End_of_file -> List.rev lines
     | line ->
-       (* Some patterns don't work if there isn't a newline *)
-       let line = line ^ "\n" in
-       let tokens, stack = TmLanguage.tokenize_exn t grammar stack line in
-       let spans = highlight_tokens 0 [] line tokens in
-       loop stack (spans :: lines)
+      (* Some patterns don't work if there isn't a newline *)
+      let line = line ^ "\n" in
+      let tokens, stack = TmLanguage.tokenize_exn t grammar stack line in
+      let spans = highlight_tokens 0 [] line tokens in
+      loop stack (spans :: lines)
   in loop stack []
 
 let () =
