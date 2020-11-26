@@ -16,7 +16,7 @@ type delim_kind = End | While
 
 type delim = {
   delim_begin : regex;
-  delim_end : regex;
+  delim_end : string;
   delim_patterns : pattern list;
   delim_name : string option;
   delim_content_name : string option;
@@ -180,7 +180,7 @@ let of_plist_exn plist =
         in
         Delim {
           delim_begin = compile_regex (get_string b);
-          delim_end = compile_regex (get_string e);
+          delim_end = get_string e;
           delim_patterns =
             begin match find "patterns" obj with
               | None -> []
@@ -242,6 +242,8 @@ let scopes token = token.scopes
 
 type stack_elem = {
   stack_delim : delim;
+  stack_region : Oniguruma.Region.t;
+  stack_begin_line : string;
   stack_grammar : grammar;
   stack_repos : (string, repo_item) Hashtbl.t list;
   stack_scopes : string list;
@@ -317,6 +319,65 @@ let handle_captures scopes default mat_start mat_end region captures tokens =
          ; ending } :: tokens)
         stack
   in pop tokens stack
+
+let insert_capture buf line beg end_ =
+  let rec loop i =
+    if i = end_ then
+      ()
+    else
+      let ch = line.[i] in
+      if ch = '\\' || ch = '[' || ch = ']' || ch = '*' || ch = '(' || ch = ')'
+      then
+        Buffer.add_char buf '\\';
+      Buffer.add_char buf ch;
+      loop (i + 1)
+  in
+  loop beg
+
+
+let insert_captures stack_top =
+  let buf = Buffer.create 10 in
+  let { stack_delim =
+          { delim_end = regex_str
+          ; delim_begin = begin_re
+          ; _ }
+      ; stack_begin_line = line
+      ; stack_region = region
+      ; _ } = stack_top in
+  let num_beg_captures = Oniguruma.num_captures begin_re in
+  let rec loop i escaped =
+    if i < String.length regex_str then
+      match regex_str.[i], escaped with
+      | '\\', true ->
+        Buffer.add_string buf "\\\\";
+        loop (i + 1) false
+      | '\\', false ->
+        loop (i + 1) true
+      | char, true ->
+        if char >= '0' && char <= '9' then
+          let idx = Char.code char - Char.code '0' in
+          if idx < num_beg_captures then
+            let beg = Oniguruma.Region.capture_beg region idx in
+            if beg = -1 then
+              ()
+            else
+              insert_capture buf line beg
+                (Oniguruma.Region.capture_end region idx)
+          else
+            ()
+        else (
+          Buffer.add_char buf '\\';
+          Buffer.add_char buf char
+        );
+        loop (i + 1) false
+      | char, false ->
+        Buffer.add_char buf char;
+        loop (i + 1) false
+    else
+      ()
+  in
+  loop 0 false;
+  Buffer.contents buf
 
 let rec find_nested scope = function
   | [] -> None
@@ -404,6 +465,8 @@ let rec match_line ~t ~grammar ~stack ~pos ~toks ~line rem_pats =
           in
           let se =
             { stack_delim = d
+            ; stack_region = region
+            ; stack_begin_line = line
             ; stack_repos = repos
             ; stack_grammar = cur_grammar
             ; stack_scopes =
@@ -449,25 +512,32 @@ let rec match_line ~t ~grammar ~stack ~pos ~toks ~line rem_pats =
           let k () = try_pats repos cur_grammar ~k pats in
           try_pats (item.repo_inner :: repos) cur_grammar pats' ~k
   in
-  let try_delim delim stack' ~k =
+  let try_delim stack_top stack' ~k =
     (* Try to match the delimiter's end pattern *)
+    let delim = stack_top.stack_delim in
     let end_match =
+      let re = insert_captures stack_top in
       match
-        Oniguruma.match_ delim.delim_end line pos Oniguruma.Options.none
+        Oniguruma.create re
+          Oniguruma.Options.none Oniguruma.Encoding.utf8
+          Oniguruma.Syntax.default
       with
-      | None -> None
-      | Some region ->
-        let start = Oniguruma.Region.capture_beg region 0 in
-        let end_ = Oniguruma.Region.capture_end region 0 in
-        assert (start = pos);
-        let toks =
-          { scopes =
-              add_scopes scopes [delim.delim_name; delim.delim_content_name]
-          ; ending = pos } :: toks in
-        let toks =
-          handle_captures scopes delim.delim_name pos end_ region
-            delim.delim_end_captures toks
-        in Some (end_, toks)
+      | Error e -> error ("End pattern: " ^ stack_top.stack_delim.delim_end ^ ": " ^ e)
+      | Ok re ->
+        match Oniguruma.match_ re line pos Oniguruma.Options.none with
+        | None -> None
+        | Some region ->
+          let start = Oniguruma.Region.capture_beg region 0 in
+          let end_ = Oniguruma.Region.capture_end region 0 in
+          assert (start = pos);
+          let toks =
+            { scopes =
+                add_scopes scopes [delim.delim_name; delim.delim_content_name]
+            ; ending = pos } :: toks in
+          let toks =
+            handle_captures scopes delim.delim_name pos end_ region
+              delim.delim_end_captures toks
+          in Some (end_, toks)
     in
     match delim.delim_kind, end_match with
     | End, None -> k ()
@@ -515,9 +585,9 @@ let rec match_line ~t ~grammar ~stack ~pos ~toks ~line rem_pats =
     | se :: stack' ->
       if se.stack_delim.delim_apply_end_pattern_last then
         try_pats repos se.stack_grammar rem_pats
-          ~k:(fun () -> try_delim se.stack_delim stack' ~k)
+          ~k:(fun () -> try_delim se stack' ~k)
       else
-        try_delim se.stack_delim stack'
+        try_delim se stack'
           ~k:(fun () -> try_pats repos se.stack_grammar rem_pats ~k)
 
 let tokenize_exn t grammar stack line =

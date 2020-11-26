@@ -6,6 +6,7 @@ let style = function
   | "constant" :: "numeric" :: _-> [ANSITerminal.blue]
   | "entity" :: "name" :: "tag" :: "label" :: _-> [ANSITerminal.cyan]
   | "entity" :: "name" :: "type" :: "variant" :: _-> [ANSITerminal.Bold]
+  | "entity" :: "name" :: "tag" :: _ -> [ANSITerminal.green]
   | "invalid" :: _ -> [ANSITerminal.red]
   | "keyword" :: "control" :: _-> [ANSITerminal.magenta]
   | "keyword" :: "operator" :: _ -> [ANSITerminal.yellow]
@@ -14,7 +15,7 @@ let style = function
   | "meta" :: "module-reference" :: _ -> [ANSITerminal.green]
   | "punctuation" :: "definition" :: "comment" :: _ -> [ANSITerminal.cyan]
   | "punctuation" :: "definition" :: "string" :: _-> [ANSITerminal.magenta]
-  | "string" :: "quoted" :: _-> [ANSITerminal.magenta]
+  | "string" :: _-> [ANSITerminal.magenta]
   | _ -> [ANSITerminal.Reset]
 
 let print_block =
