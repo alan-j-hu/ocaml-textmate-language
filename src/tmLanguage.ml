@@ -16,8 +16,8 @@ type delim_kind = End | While
 
 type delim = {
   delim_begin : regex;
-  delim_end : string;
-  delim_patterns : pattern list;
+  delim_end : string; (* Either an end or a while pattern *)
+  delim_patterns : rule list;
   delim_name : string option;
   delim_content_name : string option;
   delim_begin_captures : capture IntMap.t;
@@ -26,7 +26,7 @@ type delim = {
   delim_kind : delim_kind;
 }
 
-and pattern =
+and rule =
   | Match of match_
   | Delim of delim
   | Include_local of string
@@ -35,8 +35,8 @@ and pattern =
   | Include_base
 
 type repo_item_kind =
-  | Repo_rule of pattern
-  | Repo_patterns of pattern list
+  | Repo_rule of rule
+  | Repo_patterns of rule list
 
 type repo_item = {
   repo_item_kind : repo_item_kind;
@@ -46,7 +46,7 @@ type repo_item = {
 type grammar = {
   name : string;
   scope_name : string;
-  patterns : pattern list;
+  patterns : rule list;
   repository : (string, repo_item) Hashtbl.t;
 }
 
@@ -151,14 +151,13 @@ let of_plist_exn plist =
     | None ->
       match find "match" obj, find "begin" obj with
       | Some s, None ->
-        Match {
-          pattern = compile_regex (get_string s);
-          name = Option.map get_string (find "name" obj);
-          captures =
-            match find "captures" obj with
-            | None -> IntMap.empty
-            | Some value -> get_captures IntMap.empty (get_dict value)
-        }
+        Match
+          { pattern = compile_regex (get_string s)
+          ; name = Option.map get_string (find "name" obj)
+          ; captures =
+              match find "captures" obj with
+              | None -> IntMap.empty
+              | Some value -> get_captures IntMap.empty (get_dict value) }
       | None, Some b ->
         let e, key, delim_kind = match find "end" obj, find "while" obj with
           | Some e, None -> e, "endCaptures", End
@@ -178,27 +177,26 @@ let of_plist_exn plist =
                | Some value -> get_captures IntMap.empty (get_dict value)
                | None -> IntMap.empty) )
         in
-        Delim {
-          delim_begin = compile_regex (get_string b);
-          delim_end = get_string e;
-          delim_patterns =
-            begin match find "patterns" obj with
-              | None -> []
-              | Some v ->
-                get_list (fun x -> get_dict x |> patterns_of_plist) v
-            end;
-          delim_name = Option.map get_string (find "name" obj);
-          delim_content_name =
-            Option.map get_string (find "contentName" obj);
-          delim_begin_captures;
-          delim_end_captures;
-          delim_apply_end_pattern_last =
-            begin match find "applyEndPatternLast" obj with
-              | Some (`Int 1) -> true
-              | _ -> false
-            end;
-          delim_kind;
-        }
+        Delim
+          { delim_begin = compile_regex (get_string b)
+          ; delim_end = get_string e
+          ; delim_patterns =
+              begin match find "patterns" obj with
+                | None -> []
+                | Some v ->
+                  get_list (fun x -> get_dict x |> patterns_of_plist) v
+              end
+          ; delim_name = Option.map get_string (find "name" obj)
+          ; delim_content_name =
+              Option.map get_string (find "contentName" obj)
+          ; delim_begin_captures
+          ; delim_end_captures
+          ; delim_apply_end_pattern_last =
+              begin match find "applyEndPatternLast" obj with
+                | Some (`Int 1) -> true
+                | _ -> false
+              end
+          ; delim_kind }
       | _, _ -> error "Pattern must be match, begin/end, or begin/while."
   in
   let rec get_repo_item obj =
@@ -206,8 +204,8 @@ let of_plist_exn plist =
         begin match find "match" obj, find "begin" obj with
           | None, None -> Repo_patterns (get_patterns obj)
           | _, _ -> Repo_rule (patterns_of_plist obj)
-        end;
-      repo_inner =
+        end
+    ; repo_inner =
         begin match find "repository" obj with
           | None -> Hashtbl.create 0
           | Some obj -> get_repo obj
@@ -265,6 +263,7 @@ let next_pats grammar = function
   | [] -> grammar.patterns
   | s :: _ -> s.stack_delim.delim_patterns
 
+(* Emit tokens for the match region's captures. *)
 let handle_captures scopes default mat_start mat_end region captures tokens =
   let rec new_scopes acc = function
     | [] -> acc
@@ -320,6 +319,7 @@ let handle_captures scopes default mat_start mat_end region captures tokens =
         stack
   in pop tokens stack
 
+(* Should the character be escaped in a regex? *)
 let is_special ch =
   ch = '\\' ||
   ch = '\'' ||
@@ -340,6 +340,7 @@ let is_special ch =
   ch = '{' || ch = '}' ||
   ch = '<' || ch = '>'
 
+(* Insert the substring of [line] from [beg] to [end_] into [buf]. *)
 let insert_capture buf line beg end_ =
   let rec loop i =
     if i = end_ then
@@ -353,12 +354,14 @@ let insert_capture buf line beg end_ =
   in
   loop beg
 
-let insert_captures stack_top =
-  let buf = Buffer.create 10 in
+(* Substitute the begin pattern's captures for the backreferences in the end
+   delimiter. *)
+let subst_backrefs stack_top =
   let { stack_delim = { delim_end = regex_str; delim_begin = begin_re; _ }
       ; stack_begin_line = line
       ; stack_region = region
       ; _ } = stack_top in
+  let buf = Buffer.create (String.length regex_str) in
   let num_beg_captures = Oniguruma.num_captures begin_re in
   let rec loop i escaped =
     if i < String.length regex_str then
@@ -395,6 +398,7 @@ let rec find_nested scope = function
     | Some x -> Some x
     | None -> find_nested scope repos
 
+(* Discard zero-length tokens. *)
 let remove_empties =
   let rec go acc = function
     | [] -> acc
@@ -527,9 +531,8 @@ let rec match_line ~t ~grammar ~stack ~pos ~toks ~line rem_pats =
     (* Try to match the delimiter's end pattern *)
     let delim = stack_top.stack_delim in
     let end_match =
-      let re = insert_captures stack_top in
       match
-        Oniguruma.create re
+        Oniguruma.create (subst_backrefs stack_top)
           Oniguruma.Options.none Oniguruma.Encoding.utf8
           Oniguruma.Syntax.default
       with

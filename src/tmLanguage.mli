@@ -72,6 +72,6 @@ val tokenize_exn : t -> grammar -> stack -> string -> token list * stack
     - [tokens] is nonempty.
     - The [ending] of the last token in [tokens] is always [String.length line].
 
-    Throws {!exception:Error} if it tries to access a local grammar repository
+    Raises {!exception:Error} if it tries to access a local grammar repository
     that doesn't exist. Currently, it silently ignores inclusions of other
     grammars that don't exist in [t]. *)
