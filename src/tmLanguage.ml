@@ -320,27 +320,42 @@ let handle_captures scopes default mat_start mat_end region captures tokens =
         stack
   in pop tokens stack
 
+let is_special ch =
+  ch = '\\' ||
+  ch = '\'' ||
+  ch = '|' ||
+  ch = '.' ||
+  ch = '*' ||
+  ch = '+' ||
+  ch = '?' ||
+  ch = '^' ||
+  ch = '$' ||
+  ch = '-' ||
+  ch = ':' ||
+  ch = '~' ||
+  ch = '#' ||
+  ch = '&' ||
+  ch = '(' || ch = ')' ||
+  ch = '[' || ch = ']' ||
+  ch = '{' || ch = '}' ||
+  ch = '<' || ch = '>'
+
 let insert_capture buf line beg end_ =
   let rec loop i =
     if i = end_ then
       ()
     else
       let ch = line.[i] in
-      if ch = '\\' || ch = '[' || ch = ']' || ch = '*' || ch = '(' || ch = ')'
-      then
+      if is_special ch then
         Buffer.add_char buf '\\';
       Buffer.add_char buf ch;
       loop (i + 1)
   in
   loop beg
 
-
 let insert_captures stack_top =
   let buf = Buffer.create 10 in
-  let { stack_delim =
-          { delim_end = regex_str
-          ; delim_begin = begin_re
-          ; _ }
+  let { stack_delim = { delim_end = regex_str; delim_begin = begin_re; _ }
       ; stack_begin_line = line
       ; stack_region = region
       ; _ } = stack_top in
@@ -354,18 +369,14 @@ let insert_captures stack_top =
       | '\\', false ->
         loop (i + 1) true
       | char, true ->
-        if char >= '0' && char <= '9' then
+        if char >= '0' && char <= '9' then (
           let idx = Char.code char - Char.code '0' in
           if idx < num_beg_captures then
             let beg = Oniguruma.Region.capture_beg region idx in
-            if beg = -1 then
-              ()
-            else
-              insert_capture buf line beg
-                (Oniguruma.Region.capture_end region idx)
-          else
-            ()
-        else (
+            let end_ = Oniguruma.Region.capture_end region idx in
+            if beg <> -1 then
+              insert_capture buf line beg end_
+        ) else (
           Buffer.add_char buf '\\';
           Buffer.add_char buf char
         );
@@ -373,8 +384,6 @@ let insert_captures stack_top =
       | char, false ->
         Buffer.add_char buf char;
         loop (i + 1) false
-    else
-      ()
   in
   loop 0 false;
   Buffer.contents buf
@@ -426,9 +435,10 @@ let rec match_line ~t ~grammar ~stack ~pos ~toks ~line rem_pats =
   let rec try_pats repos cur_grammar ~k = function
     | [] -> k () (* No patterns have matched, so call the continuation *)
     | Match m :: pats ->
-      begin match
-          Oniguruma.match_ m.pattern line pos Oniguruma.Options.none
-        with
+      let match_result =
+        Oniguruma.match_ m.pattern line pos Oniguruma.Options.none
+      in
+      begin match match_result with
         | None -> try_pats repos cur_grammar ~k pats
         | Some region ->
           let start = Oniguruma.Region.capture_beg region 0 in
@@ -446,9 +456,10 @@ let rec match_line ~t ~grammar ~stack ~pos ~toks ~line rem_pats =
       end
     | Delim d :: pats ->
       (* Try to match the delimiter's begin pattern *)
-      begin match
-          Oniguruma.match_ d.delim_begin line pos Oniguruma.Options.none
-        with
+      let match_result =
+        Oniguruma.match_ d.delim_begin line pos Oniguruma.Options.none
+      in
+      begin match match_result with
         | None -> try_pats repos cur_grammar ~k pats
         | Some region ->
           let start = Oniguruma.Region.capture_beg region 0 in
@@ -522,7 +533,7 @@ let rec match_line ~t ~grammar ~stack ~pos ~toks ~line rem_pats =
           Oniguruma.Options.none Oniguruma.Encoding.utf8
           Oniguruma.Syntax.default
       with
-      | Error e -> error ("End pattern: " ^ stack_top.stack_delim.delim_end ^ ": " ^ e)
+      | Error e -> error ("End pattern: " ^ delim.delim_end ^ ": " ^ e)
       | Ok re ->
         match Oniguruma.match_ re line pos Oniguruma.Options.none with
         | None -> None
