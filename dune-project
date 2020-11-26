@@ -11,6 +11,7 @@
 (package
  (name textmate-language)
  (depends
+  (ocaml (>= 4.08))
   (oniguruma (< 0.2.0)))
  (synopsis "Tokenizing source code with TextMate grammars")
  (description "

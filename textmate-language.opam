@@ -13,6 +13,7 @@ doc: "https://alan-j-hu.github.io/ocaml-textmate-language/"
 bug-reports: "https://github.com/alan-j-hu/ocaml-textmate-language/issues"
 depends: [
   "dune" {>= "2.7"}
+  "ocaml" {>= "4.08"}
   "oniguruma" {< "0.2.0"}
   "odoc" {with-doc}
 ]
