@@ -226,8 +226,7 @@ let of_plist_exn plist =
   ; repository =
       match find "repository" obj with
       | None -> Hashtbl.create 0
-      | Some obj -> get_repo obj
-  }
+      | Some obj -> get_repo obj }
 
 type token = {
   ending : int;
@@ -273,41 +272,47 @@ let handle_captures scopes default mat_start mat_end region captures tokens =
     (* Regex captures are ordered by their left parentheses. Do a depth-first
        preorder traversal by keeping a stack of captures. *)
     IntMap.fold (fun idx capture (start, stack, tokens) ->
-        (* If the capture mentions a lookahead, it can go past the bounds of its
-           parent. The match is capped at the boundary for the parent. Is this
-           the right decision to make? Clearly the writer of the grammar
+        (* If the capture mentions a lookahead, it can go past the bounds of
+           its parent. The match is capped at the boundary for the parent. Is
+           this the right decision to make? Clearly the writer of the grammar
            intended for the capture to exceed the parent in this case. *)
-        let cap_start = Oniguruma.Region.capture_beg region idx in
-        let cap_end = Oniguruma.Region.capture_end region idx in
-        if cap_start = -1 then
-          (start, [], tokens)
+        if idx < 0 || idx >= Oniguruma.Region.length region then
+          (start, stack, tokens)
         else
-          match stack with
-          | [] ->
-            let cap_start = if cap_start < start then start else cap_start in
-            let cap_end = if cap_end > mat_end then mat_end else cap_end in
-            ( cap_start
-            , [(cap_end, capture.capture_name)]
-            , { scopes = add_scopes scopes [default]; ending = cap_start }
-              :: tokens )
-          | (top_end, top_name) :: stack' ->
-            let cap_start = if cap_start < start then start else cap_start in
-            if cap_start >= top_end then
-              let under = match stack' with
-                | [] -> mat_end
-                | (end_, _) :: _ -> end_
-              in
-              let cap_end = if cap_end > under then under else cap_end in
-              ( top_end
-              , (cap_end, capture.capture_name) :: stack'
-              , { scopes = add_scopes scopes (new_scopes [top_name] stack')
-                ; ending = cap_start } :: tokens )
-            else
-              let cap_end = if cap_end > top_end then top_end else cap_end in
-              ( cap_start
-              , (cap_end, capture.capture_name) :: stack
-              , { scopes = add_scopes scopes (new_scopes [top_name] stack)
-                ; ending = cap_start } :: tokens )
+          let cap_start = Oniguruma.Region.capture_beg region idx in
+          let cap_end = Oniguruma.Region.capture_end region idx in
+          if cap_start = -1 then
+            (* Capture wasn't found, ignore *)
+            (start, stack, tokens)
+          else
+            match stack with
+            | [] ->
+               let cap_start = if cap_start < start then start else cap_start in
+               let cap_end = if cap_end > mat_end then mat_end else cap_end in
+               ( cap_start
+               , [(cap_end, capture.capture_name)]
+               , { scopes = add_scopes scopes [default]; ending = cap_start }
+                 :: tokens )
+            | (top_end, top_name) :: stack' ->
+               let cap_start = if cap_start < start then start else cap_start in
+               if cap_start >= top_end then
+                 let under = match stack' with
+                   | [] -> mat_end
+                   | (end_, _) :: _ -> end_
+                 in
+                 let cap_end = if cap_end > under then under else cap_end in
+                 (* Pop off the stack, then push the capture *)
+                 ( top_end
+                 , (cap_end, capture.capture_name) :: stack'
+                 , { scopes = add_scopes scopes (new_scopes [top_name] stack')
+                   ; ending = cap_start } :: tokens )
+               else
+                 let cap_end = if cap_end > top_end then top_end else cap_end in
+                 (* Push the capture on the stack *)
+                 ( cap_start
+                 , (cap_end, capture.capture_name) :: stack
+                 , { scopes = add_scopes scopes (new_scopes [top_name] stack)
+                   ; ending = cap_start } :: tokens )
       ) captures (mat_start, [], tokens)
   in
   let rec pop tokens = function
