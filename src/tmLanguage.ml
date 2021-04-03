@@ -1,20 +1,21 @@
-type capture = {
-  capture_name : string option;
-}
-
 module IntMap = Map.Make(Int)
 
-type regex = Oniguruma.Encoding.utf8 Oniguruma.t
+type capture = {
+  capture_name : string option;
+  capture_patterns : rule list;
+}
 
-type match_ = {
+and regex = Oniguruma.Encoding.utf8 Oniguruma.t
+
+and match_ = {
   name : string option;
   pattern : regex;
   captures : capture IntMap.t;
 }
 
-type delim_kind = End | While
+and delim_kind = End | While
 
-type delim = {
+and delim = {
   delim_begin : regex;
   delim_end : string; (* Either an end or a while pattern *)
   delim_patterns : rule list;
@@ -130,11 +131,14 @@ let of_plist_exn plist =
       let capture_name = match find "name" v with
         | None -> None
         | Some name -> Some (get_string name)
-      in get_captures (IntMap.add idx { capture_name } acc) kvs
-  in
-  let rec get_patterns obj =
-    find_exn "patterns" obj
-    |> get_list (fun x -> get_dict x |> patterns_of_plist)
+      in
+      let capture_patterns = match find "patterns" v with
+        | None -> []
+        | Some v -> get_pattern_list v
+      in
+      get_captures (IntMap.add idx { capture_name; capture_patterns } acc) kvs
+  and get_pattern_list l = get_list (fun x -> patterns_of_plist (get_dict x)) l
+  and get_patterns obj = find_exn "patterns" obj |> get_pattern_list
   and patterns_of_plist obj =
     match find "include" obj with
     | Some s ->
@@ -183,8 +187,7 @@ let of_plist_exn plist =
           ; delim_patterns =
               begin match find "patterns" obj with
                 | None -> []
-                | Some v ->
-                  get_list (fun x -> get_dict x |> patterns_of_plist) v
+                | Some v -> get_pattern_list v
               end
           ; delim_name = Option.map get_string (find "name" obj)
           ; delim_content_name =
