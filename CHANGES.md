@@ -1,7 +1,7 @@
 ## 0.2.1 (April 9, 2021)
 
 - Check capture index bounds and ignore out-of-bounds captures indices in
-  rules. Previously the underlying Oniguruma library would throw an
+  rules. Previously the underlying Oniguruma bindings would throw an
   `Invalid_argument` exception.
 
 ## 0.2.0 (November 26, 2020)
