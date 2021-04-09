@@ -48,11 +48,11 @@ type token
 (** A token of code. *)
 
 val ending : token -> int
-(** The index of the character right after the last character of the token.
+(** One past the index of the last character of the token.
 
-    If [tok] is the first token of the line, it spans the substring from [0] to
-    [ending tok]. If [tok] succeeds a token [prev], [tok] spans the substring
-    from [ending prev] to [ending tok]. *)
+    If [tok] is the first token of the line, [tok] spans the substring within
+    interval \[[0], [ending tok]). If [tok] succeeds a token [prev], [tok]
+    spans the substring within interval \[[ending prev], [ending tok]). *)
 
 val scopes : token -> string list
 (** The token's stack of TextMate grammar scopes. *)
