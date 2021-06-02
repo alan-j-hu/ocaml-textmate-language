@@ -106,6 +106,15 @@ let subst_backrefs stack_top =
   loop 0 false;
   Buffer.contents buf
 
+let match_subst se =
+  match
+    Oniguruma.create (subst_backrefs se)
+      Oniguruma.Options.none Oniguruma.Encoding.utf8
+      Oniguruma.Syntax.default
+  with
+  | Error e -> error ("End pattern: " ^ se.stack_delim.delim_end ^ ": " ^ e)
+  | Ok re -> re
+
 let rec find_nested scope = function
   | [] -> None
   | repo :: repos ->
@@ -200,6 +209,16 @@ let handle_captures
          ; ending } :: tokens)
         stack
   in pop tokens stack
+
+let get_whiles =
+  let rec loop acc = function
+    | [] -> acc
+    | se :: stack ->
+      match se.delim_kind with
+      | End -> loop acc stack
+      | While -> loop acc stack
+  in
+  loop []
 
 (* Tokenizes a line according to the grammar.
 
@@ -317,26 +336,21 @@ let rec match_line ~t ~grammar ~stack ~pos ~toks ~line rem_pats =
     let delim = stack_top.stack_delim in
     let end_match =
       match
-        Oniguruma.create (subst_backrefs stack_top)
-          Oniguruma.Options.none Oniguruma.Encoding.utf8
-          Oniguruma.Syntax.default
+        Oniguruma.match_ (match_subst stack_top) line pos Oniguruma.Options.none
       with
-      | Error e -> error ("End pattern: " ^ delim.delim_end ^ ": " ^ e)
-      | Ok re ->
-        match Oniguruma.match_ re line pos Oniguruma.Options.none with
-        | None -> None
-        | Some region ->
-          let start = Oniguruma.Region.capture_beg region 0 in
-          let end_ = Oniguruma.Region.capture_end region 0 in
-          assert (start = pos);
-          let toks =
-            { scopes =
-                add_scopes scopes [delim.delim_name; delim.delim_content_name]
-            ; ending = pos } :: toks in
-          let toks =
-            handle_captures scopes delim.delim_name pos end_ region
-              delim.delim_end_captures toks
-          in Some (end_, toks)
+      | None -> None
+      | Some region ->
+        let start = Oniguruma.Region.capture_beg region 0 in
+        let end_ = Oniguruma.Region.capture_end region 0 in
+        assert (start = pos);
+        let toks =
+          { scopes =
+              add_scopes scopes [delim.delim_name; delim.delim_content_name]
+          ; ending = pos } :: toks in
+        let toks =
+          handle_captures scopes delim.delim_name pos end_ region
+            delim.delim_end_captures toks
+        in Some (end_, toks)
     in
     match delim.delim_kind, end_match with
     | End, None -> k ()
@@ -390,4 +404,29 @@ let rec match_line ~t ~grammar ~stack ~pos ~toks ~line rem_pats =
           ~k:(fun () -> try_pats repos se.stack_grammar rem_pats ~k)
 
 let tokenize_exn t grammar stack line =
-  match_line ~t ~grammar ~stack ~pos:0 ~toks:[] ~line (next_pats grammar stack)
+  (* See https://github.com/Microsoft/vscode-textmate/issues/25 for how to
+     handle while rules. This is important for the Markdown grammar. *)
+  let rec try_while_rules pos rem_stack = function
+    | [] -> (pos, rem_stack)
+    | se :: stack ->
+      match se.stack_delim.delim_kind with
+      | End -> try_while_rules pos (se :: rem_stack) stack
+      | While ->
+        let rec loop pos' =
+          if pos' = String.length line then
+            (pos, rem_stack)
+          else
+            let match_result =
+              Oniguruma.match_ (match_subst se) line pos' Oniguruma.Options.none
+            in
+            match match_result with
+            | None -> loop (pos' + 1)
+            | Some region ->
+              let start = Oniguruma.Region.capture_beg region 0 in
+              let end_ = Oniguruma.Region.capture_end region 0 in
+              assert (start = pos');
+              try_while_rules end_ (se :: rem_stack) stack
+        in loop pos
+  in
+  let pos, stack = try_while_rules 0 [] (List.rev stack) in
+  match_line ~t ~grammar ~stack ~pos ~toks:[] ~line (next_pats grammar stack)
