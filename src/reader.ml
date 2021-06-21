@@ -14,7 +14,7 @@ let find_exn key obj =
   | None -> error (key ^ " not found.")
 
 let get_dict = function
-  | `Dict d -> d
+  | `Assoc d | `Dict d | `O d -> d
   | _ -> error "Type error: Expected dict."
 
 let get_string = function
@@ -22,7 +22,7 @@ let get_string = function
   | _ -> error "Type error: Expected string."
 
 let get_list f = function
-  | `Array l -> List.map f l
+  | `A l | `Array l | `List l -> List.map f l
   | _ -> error "Type error: Expected list."
 
 let compile_regex re =
@@ -116,7 +116,7 @@ and patterns_of_plist obj =
           ; delim_kind }
        | _, _ -> error "Pattern must be match, begin/end, or begin/while."
 
-let of_plist_exn plist =
+let of_doc_exn (plist : union) =
   let rec get_repo_item obj =
     { repo_item_kind =
         begin match find "match" obj, find "begin" obj with
@@ -145,3 +145,9 @@ let of_plist_exn plist =
       match find "repository" obj with
       | None -> Hashtbl.create 0
       | Some obj -> get_repo obj }
+
+let of_plist_exn = (of_doc_exn :> plist -> grammar)
+
+let of_ezjsonm_exn = (of_doc_exn :> ezjsonm -> grammar)
+
+let of_yojson_exn = (of_doc_exn :> yojson -> grammar)

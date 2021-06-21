@@ -11,7 +11,10 @@
  (name textmate-language)
  (depends
   (ocaml (>= 4.08))
-  (oniguruma (< 0.2.0)))
+  (oniguruma (< 0.2.0))
+  (plist-xml :with-test)
+  (yojson (and (>= 1.7) (< 2) :with-test))
+  (yaml (and (>= 2.1) (< 3) :with-test)))
  (synopsis "Tokenizing source code with TextMate grammars")
  (description "
 Tokenizing source code with TextMate grammars."))

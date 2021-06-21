@@ -19,11 +19,33 @@ type plist =
   | `Int of int
   | `String of string
   | `Array of plist list
-  | `Dict of (string * plist) list
-  ]
-(** A plist document. This is the same plist type that is defined in the
+  | `Dict of (string * plist) list ]
+(** A plist document. This is the same type as [t] defined in the
     {{:https://opam.ocaml.org/packages/plist-xml/} [plist-xml]} package (as of
     version 0.3.0), but is reproduced here as not to depend on [plist-xml]. *)
+
+type ezjsonm =
+  [ `Null
+  | `Bool of bool
+  | `Float of float
+  | `String of string
+  | `A of ezjsonm list
+  | `O of (string * ezjsonm) list ]
+(** A JSON document. This is the same type as [value] defined in the
+    {{:https://opam.ocaml.org/packages/ezjsonm/} [ezjsonm]} package (as of
+    version 1.2.0), but is reproduced here as not to depend on [ezjsonm]. *)
+
+type yojson =
+  [ `Null
+  | `Bool of bool
+  | `Int of int
+  | `Float of float
+  | `String of string
+  | `Assoc of (string * yojson) list
+  | `List of yojson list ]
+(** A JSON document. This is the same type as [Basic.t] defined in the
+    {{:https://opam.ocaml.org/packages/yojson/} [yojson]} package (as of
+    version 1.7.0), but is reproduced here as not to depend on [yojson]. *)
 
 val create : unit -> t
 (** Create an empty collection of grammars. *)
@@ -39,6 +61,14 @@ val find_by_scope_name : t -> string -> grammar option
 
 val of_plist_exn : plist -> grammar
 (** Reads a TextMate grammar from a plist file. Raises {!exception:Error} if
+    the plist does not represent a valid TextMate grammar. *)
+
+val of_ezjsonm_exn : ezjsonm -> grammar
+(** Reads a TextMate grammar from a JSON file. Raises {!exception:Error} if
+    the plist does not represent a valid TextMate grammar. *)
+
+val of_yojson_exn : yojson -> grammar
+(** Reads a TextMate grammar from a JSON file. Raises {!exception:Error} if
     the plist does not represent a valid TextMate grammar. *)
 
 val empty : stack

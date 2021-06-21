@@ -56,6 +56,21 @@ type t = {
   by_scope_name : (string, grammar) Hashtbl.t;
 }
 
+type union =
+  [ `Bool of bool
+  | `Data of string
+  | `Date of float * float option
+  | `Float of float
+  | `Int of int
+  | `String of string
+  | `Array of union list
+  | `Dict of (string * union) list
+  | `Null
+  | `A of union list
+  | `O of (string * union) list
+  | `Assoc of (string * union) list
+  | `List of union list ]
+
 type plist =
   [ `Bool of bool
   | `Data of string
@@ -64,8 +79,24 @@ type plist =
   | `Int of int
   | `String of string
   | `Array of plist list
-  | `Dict of (string * plist) list
-  ]
+  | `Dict of (string * plist) list ]
+
+type ezjsonm =
+  [ `Null
+  | `Bool of bool
+  | `Float of float
+  | `String of string
+  | `A of ezjsonm list
+  | `O of (string * ezjsonm) list ]
+
+type yojson =
+  [ `Null
+  | `Bool of bool
+  | `Int of int
+  | `Float of float
+  | `String of string
+  | `Assoc of (string * yojson) list
+  | `List of yojson list ]
 
 exception Error of string
 
