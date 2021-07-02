@@ -13,6 +13,7 @@
   (ocaml (>= 4.08))
   (oniguruma (< 0.2.0))
   (plist-xml :with-test)
+  (alcotest (and (>= 1.4) (< 2) :with-test))
   (yojson (and (>= 1.7) (< 2) :with-test))
   (yaml (and (>= 2.1) (< 3) :with-test)))
  (synopsis "Tokenizing source code with TextMate grammars")

@@ -57,64 +57,63 @@ and patterns_of_plist obj =
   match find "include" obj with
   | Some s ->
     begin match get_string s with
-    | "$base" -> Include_base
-    | "$self" -> Include_self
-    | s ->
-       let len = String.length s in
-       if len > 0 && s.[0] = '#' then
-         Include_local (String.sub s 1 (len - 1))
-       else
-         Include_scope s
+      | "$base" -> Include_base
+      | "$self" -> Include_self
+      | s ->
+        let len = String.length s in
+        if len > 0 && s.[0] = '#' then
+          Include_local (String.sub s 1 (len - 1))
+        else
+          Include_scope s
     end
   | None ->
-     match find "match" obj, find "begin" obj with
-       | Some s, None ->
-         Match
-           { pattern = compile_regex (get_string s)
-           ; name = Option.map get_string (find "name" obj)
-           ; captures =
-               match find "captures" obj with
-               | None -> IntMap.empty
-               | Some value -> get_captures IntMap.empty (get_dict value) }
-       | None, Some b ->
-        let e, key, delim_kind = match find "end" obj, find "while" obj with
-          | Some e, None -> e, "endCaptures", End
-          | None, Some e -> e, "whileCaptures", While
-          | _, _ -> error "Begin patterns must either have an end or while."
-        in
-        let delim_begin_captures, delim_end_captures =
-          match find "captures" obj with
-          | Some value ->
-            let captures = get_captures IntMap.empty (get_dict value) in
-            captures, captures
-          | None ->
-            ( (match find "beginCaptures" obj with
-                  | Some value -> get_captures IntMap.empty (get_dict value)
-                  | None -> IntMap.empty)
-            , (match find key obj with
-               | Some value -> get_captures IntMap.empty (get_dict value)
-               | None -> IntMap.empty) )
-        in
-        Delim
-          { delim_begin = compile_regex (get_string b)
-          ; delim_end = get_string e
-          ; delim_patterns =
-              begin match find "patterns" obj with
-                | None -> []
-                | Some v -> get_pattern_list v
-              end
-          ; delim_name = Option.map get_string (find "name" obj)
-          ; delim_content_name =
-              Option.map get_string (find "contentName" obj)
-          ; delim_begin_captures
-          ; delim_end_captures
-          ; delim_apply_end_pattern_last =
-              begin match find "applyEndPatternLast" obj with
-                | Some (`Int 1) -> true
-                | _ -> false
-              end
-          ; delim_kind }
-       | _, _ -> error "Pattern must be match, begin/end, or begin/while."
+    match find "match" obj, find "begin" obj with
+    | Some s, None ->
+      Match
+        { pattern = compile_regex (get_string s)
+        ; name = Option.map get_string (find "name" obj)
+        ; captures =
+            match find "captures" obj with
+            | None -> IntMap.empty
+            | Some value -> get_captures IntMap.empty (get_dict value) }
+    | None, Some b ->
+      let e, key, delim_kind = match find "end" obj, find "while" obj with
+        | Some e, None -> e, "endCaptures", End
+        | None, Some e -> e, "whileCaptures", While
+        | _, _ -> error "Begin patterns must either have an end or while."
+      in
+      let delim_begin_captures, delim_end_captures =
+        match find "captures" obj with
+        | Some value ->
+          let captures = get_captures IntMap.empty (get_dict value) in
+          captures, captures
+        | None ->
+          ( (match find "beginCaptures" obj with
+             | Some value -> get_captures IntMap.empty (get_dict value)
+             | None -> IntMap.empty)
+          , (match find key obj with
+             | Some value -> get_captures IntMap.empty (get_dict value)
+             | None -> IntMap.empty) )
+      in
+      Delim
+        { delim_begin = compile_regex (get_string b)
+        ; delim_end = get_string e
+        ; delim_patterns =
+            begin match find "patterns" obj with
+              | None -> []
+              | Some v -> get_pattern_list v
+            end
+        ; delim_name = Option.map get_string (find "name" obj)
+        ; delim_content_name = Option.map get_string (find "contentName" obj)
+        ; delim_begin_captures
+        ; delim_end_captures
+        ; delim_apply_end_pattern_last =
+            begin match find "applyEndPatternLast" obj with
+              | Some (`Int 1) -> true
+              | _ -> false
+            end
+        ; delim_kind }
+    | _, _ -> error "Pattern must be match, begin/end, or begin/while."
 
 let of_doc_exn (plist : union) =
   let rec get_repo_item obj =

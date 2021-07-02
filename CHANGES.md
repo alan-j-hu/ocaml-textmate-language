@@ -1,3 +1,8 @@
+## Unreleased
+
+- Fix handling of end-delimiter scopes
+- Add tests
+
 ## 0.2.1 (April 9, 2021)
 
 - Check capture index bounds and ignore out-of-bounds captures indices in

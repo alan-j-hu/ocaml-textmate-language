@@ -16,6 +16,7 @@ type stack_elem = {
   stack_grammar : grammar;
   stack_repos : (string, repo_item) Hashtbl.t list;
   stack_scopes : string list;
+  stack_prev_scopes : string list;
 }
 
 type stack = stack_elem list
@@ -137,13 +138,13 @@ let remove_empties =
         go (tok :: acc) toks
   in go []
 
+let rec new_scopes acc = function
+  | [] -> acc
+  | (_, scope) :: xs -> new_scopes (scope :: acc) xs
+
 (* Emit tokens for the match region's captures. *)
 let handle_captures
     scopes default mat_start mat_end region captures tokens =
-  let rec new_scopes acc = function
-    | [] -> acc
-    | (_, scope) :: xs -> new_scopes (scope :: acc) xs
-  in
   let _, stack, tokens =
     (* Regex captures are ordered by their left parentheses. Do a depth-first
        preorder traversal by keeping a stack of captures. *)
@@ -289,7 +290,8 @@ let rec match_line ~t ~grammar ~stack ~pos ~toks ~line rem_pats =
             ; stack_repos = repos
             ; stack_grammar = cur_grammar
             ; stack_scopes =
-                add_scopes scopes [d.delim_name; d.delim_content_name] }
+                add_scopes scopes [d.delim_name; d.delim_content_name]
+            ; stack_prev_scopes = scopes }
           in
           match d.delim_kind with
           | End ->
@@ -345,10 +347,13 @@ let rec match_line ~t ~grammar ~stack ~pos ~toks ~line rem_pats =
         assert (start = pos);
         let toks =
           { scopes =
-              add_scopes scopes [delim.delim_name; delim.delim_content_name]
+              add_scopes
+                stack_top.stack_prev_scopes
+                [delim.delim_name; delim.delim_content_name]
           ; ending = pos } :: toks in
         let toks =
-          handle_captures scopes delim.delim_name pos end_ region
+          handle_captures
+            stack_top.stack_prev_scopes delim.delim_name pos end_ region
             delim.delim_end_captures toks
         in Some (end_, toks)
     in
