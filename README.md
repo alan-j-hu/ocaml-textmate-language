@@ -1,7 +1,7 @@
 # ocaml-textmate-language
 
-This library provides functions for reading TextMate grammars and parsing
-lines of source code.
+`textmate-language` provides functions for reading TextMate grammars and
+tokenizing lines of source code.
 
 Read the documentation at https://alan-j-hu.github.io/ocaml-textmate-language/.
 
