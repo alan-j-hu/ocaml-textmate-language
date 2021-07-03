@@ -16,8 +16,8 @@ depends: [
   "oniguruma" {< "0.2.0"}
   "plist-xml" {with-test}
   "alcotest" {>= "1.4" & < "2" & with-test}
+  "ezjsonm" {>= "1.2" & < "2" & with-test}
   "yojson" {>= "1.7" & < "2" & with-test}
-  "yaml" {>= "2.1" & < "3" & with-test}
   "odoc" {with-doc}
 ]
 build: [

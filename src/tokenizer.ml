@@ -338,7 +338,8 @@ let rec match_line ~t ~grammar ~stack ~pos ~toks ~line rem_pats =
     let delim = stack_top.stack_delim in
     let end_match =
       match
-        Oniguruma.match_ (match_subst stack_top) line pos Oniguruma.Options.none
+        Oniguruma.match_ (match_subst stack_top) line pos
+          Oniguruma.Options.none
       with
       | None -> None
       | Some region ->
@@ -367,31 +368,18 @@ let rec match_line ~t ~grammar ~stack ~pos ~toks ~line rem_pats =
       (* Pop the delimiter off the stack and continue *)
       match_line ~t ~grammar ~stack:stack' ~pos:end_ ~toks ~line
         (next_pats grammar stack')
-    | While, Some (_, toks) ->
-      (* Subsume the remainder of the line into a span *)
-      ( remove_empties
-          ({ scopes = add_scopes scopes [delim.delim_name]; ending = len }
-           :: toks)
-      , stack )
-    | While, None -> k ()
+    | While, _ -> error "Unreachable"
   in
   if pos > len then
     (* End of string reached *)
     match stack with
     | [] -> (remove_empties ({ scopes; ending = len } :: toks), stack)
-    | se :: stack' ->
+    | se :: _stack' ->
       let d = se.stack_delim in
-      match d.delim_kind with
-      | End ->
-        ( remove_empties
-            ({ scopes = add_scopes scopes [d.delim_name]
-             ; ending = len } :: toks)
-        , stack )
-      (* If reached, this means that the while pattern wasn't matched. Retry
-         the line. *)
-      | While ->
-        match_line ~t ~grammar ~stack ~pos:0 ~toks:[] ~line
-          (next_pats grammar stack')
+      ( remove_empties
+          ({ scopes = add_scopes scopes [d.delim_name]
+           ; ending = len } :: toks)
+      , stack )
   else
     (* No patterns have matched, so increment the position and try again *)
     let k () =
@@ -401,28 +389,32 @@ let rec match_line ~t ~grammar ~stack ~pos ~toks ~line rem_pats =
     match stack with
     | [] -> try_pats repos grammar rem_pats ~k
     | se :: stack' ->
-      if se.stack_delim.delim_apply_end_pattern_last then
-        try_pats repos se.stack_grammar rem_pats
-          ~k:(fun () -> try_delim se stack' ~k)
-      else
-        try_delim se stack'
-          ~k:(fun () -> try_pats repos se.stack_grammar rem_pats ~k)
+      match se.stack_delim.delim_kind with
+      | While -> try_pats repos se.stack_grammar rem_pats ~k
+      | End ->
+        if se.stack_delim.delim_apply_end_pattern_last then
+          try_pats repos se.stack_grammar rem_pats
+            ~k:(fun () -> try_delim se stack' ~k)
+        else
+          try_delim se stack'
+            ~k:(fun () -> try_pats repos se.stack_grammar rem_pats ~k)
 
 let tokenize_exn t grammar stack line =
   (* See https://github.com/Microsoft/vscode-textmate/issues/25 for how to
      handle while rules. This is important for the Markdown grammar. *)
-  let rec try_while_rules pos rem_stack = function
-    | [] -> (pos, rem_stack)
+  let rec try_while_rules pos toks rem_stack = function
+    | [] -> (toks, pos, rem_stack)
     | se :: stack ->
       match se.stack_delim.delim_kind with
-      | End -> try_while_rules pos (se :: rem_stack) stack
+      | End -> try_while_rules pos toks (se :: rem_stack) stack
       | While ->
         let rec loop pos' =
           if pos' = String.length line then
-            (pos, rem_stack)
+            (toks, pos, rem_stack)
           else
             let match_result =
-              Oniguruma.match_ (match_subst se) line pos' Oniguruma.Options.none
+              Oniguruma.match_ (match_subst se) line pos'
+                Oniguruma.Options.none
             in
             match match_result with
             | None -> loop (pos' + 1)
@@ -430,8 +422,21 @@ let tokenize_exn t grammar stack line =
               let start = Oniguruma.Region.capture_beg region 0 in
               let end_ = Oniguruma.Region.capture_end region 0 in
               assert (start = pos');
-              try_while_rules end_ (se :: rem_stack) stack
+              let toks =
+                { scopes = se.stack_prev_scopes; ending = pos' } :: toks
+              in
+              let toks =
+                handle_captures
+                  se.stack_prev_scopes se.stack_delim.delim_name pos end_
+                  region se.stack_delim.delim_end_captures toks
+              in
+              let toks =
+                { scopes =
+                    add_scopes se.stack_prev_scopes [se.stack_delim.delim_name]
+                ; ending = end_ } :: toks
+              in
+              try_while_rules end_ toks (se :: rem_stack) stack
         in loop pos
   in
-  let pos, stack = try_while_rules 0 [] (List.rev stack) in
-  match_line ~t ~grammar ~stack ~pos ~toks:[] ~line (next_pats grammar stack)
+  let toks, pos, stack = try_while_rules 0 [] [] (List.rev stack) in
+  match_line ~t ~grammar ~stack ~pos ~toks ~line (next_pats grammar stack)

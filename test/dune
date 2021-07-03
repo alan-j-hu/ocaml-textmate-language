@@ -1,4 +1,4 @@
 (tests
  (names test)
  (deps (glob_files data/*))
- (libraries alcotest markup plist-xml textmate-language yaml yojson))
+ (libraries alcotest ezjsonm markup plist-xml textmate-language yojson))

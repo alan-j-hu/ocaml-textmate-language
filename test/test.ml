@@ -23,36 +23,59 @@ let read_plist filename =
 let read_yojson_basic filename =
   TmLanguage.of_yojson_exn (Yojson.Basic.from_file filename)
 
-let read_yaml filename =
-  TmLanguage.of_ezjsonm_exn (Yaml.of_string_exn (read_file filename))
-
-let t = TmLanguage.create ()
-
-let () =
-  TmLanguage.add_grammar t (read_yojson_basic "data/grammar1.json")
-
-let tested_type =
-  Alcotest.(list (pair int (list string)))
-
-let test1 () =
-  let open TmLanguage in
-  let check expected s =
-    let toks, _ =
-      tokenize_exn t (Option.get (find_by_scope_name t "source.a")) empty s
-    in
-    let toks = List.map (fun tok -> (ending tok, scopes tok)) toks in
-    Alcotest.check tested_type s expected toks
+let read_ezjsonm filename =
+  let chan = open_in filename in
+  let json =
+    Fun.protect (fun () -> Ezjsonm.from_channel chan)
+      ~finally:(fun () -> close_in chan)
   in
-  check [ 1, ["keyword.letter"; "source.a"] ] "a";
-  check [ 1, ["keyword.letter"; "source.a"]
-        ; 2, ["punctuation.paren.open"; "source.a"]
-        ; 3, ["keyword.letter"; "expression.group"; "source.a"]
-        ; 4, ["punctuation.paren.close"; "source.a"] ] "a(a)"
+  TmLanguage.of_ezjsonm_exn json
+
+let check data name cases () =
+  let open TmLanguage in
+  let t = create () in
+  add_grammar t data;
+  let tested_type = Alcotest.(list (pair int (list string))) in
+  let check lines =
+    ignore (List.fold_left (fun stack (expected, str) ->
+        let toks, stack =
+          tokenize_exn t (Option.get (find_by_scope_name t name)) stack str
+        in
+        let toks = List.map (fun tok -> (ending tok, scopes tok)) toks in
+        Alcotest.check tested_type str expected toks;
+        stack) empty lines)
+  in
+  List.iter check cases
+
+let test filename name cases =
+  ( name
+  , [ Alcotest.test_case
+        "Yojson" `Quick (check (read_yojson_basic filename) name cases)
+    ; Alcotest.test_case
+        "Ezjsonm" `Quick (check (read_ezjsonm filename) name cases) ] )
 
 let () =
-  let open Alcotest in
-  run "Suite1" [
-      "", [
-          test_case "" `Quick test1;
-        ]
-    ]
+  Alcotest.run "Suite1"
+    [ test "data/a.json" "source.a"
+        [ [ [ 1, ["keyword.letter"; "source.a"] ],
+            "a" ]
+        ; [ [ 1, ["keyword.letter"; "source.a"]
+            ; 2, ["punctuation.paren.open"; "source.a"]
+            ; 3, ["keyword.letter"; "expression.group"; "source.a"]
+            ; 4, ["punctuation.paren.close"; "source.a"] ],
+            "a(a)" ]
+        ; [ [ 1, ["keyword.letter"; "source.a"]
+            ; 2, ["punctuation.paren.open"; "source.a"] ],
+            "a("
+          ; [ 1, ["keyword.letter"; "expression.group"; "source.a" ]
+            ; 2, ["punctuation.paren.close"; "source.a"] ],
+            "a)" ] ]
+    ; test "data/while.json" "source.while"
+        [ [ [ 1, ["begin"; "source.while"] ],
+            "a" ]
+        ; [ [ 1, ["begin"; "source.while"]
+            ; 2, ["expression.group"; "source.while"] ],
+            "ac"
+          ; [ 1, ["while"; "source.while"]
+            ; 2, ["keyword.letter"; "expression.group"; "source.while"] ],
+            "bc" ] ] ]
