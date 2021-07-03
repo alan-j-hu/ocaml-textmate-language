@@ -1,3 +1,8 @@
+type test_line = {
+  line : string;
+  expected : (int * string list) list
+}
+
 let read_file filename =
   let chan = open_in filename in
   Fun.protect (fun () ->
@@ -37,12 +42,12 @@ let check data name cases () =
   add_grammar t data;
   let tested_type = Alcotest.(list (pair int (list string))) in
   let check lines =
-    ignore (List.fold_left (fun stack (expected, str) ->
+    ignore (List.fold_left (fun stack { line; expected } ->
         let toks, stack =
-          tokenize_exn t (Option.get (find_by_scope_name t name)) stack str
+          tokenize_exn t (Option.get (find_by_scope_name t name)) stack line
         in
         let toks = List.map (fun tok -> (ending tok, scopes tok)) toks in
-        Alcotest.check tested_type str expected toks;
+        Alcotest.check tested_type line expected toks;
         stack) empty lines)
   in
   List.iter check cases
@@ -55,27 +60,67 @@ let test filename name cases =
         "Ezjsonm" `Quick (check (read_ezjsonm filename) name cases) ] )
 
 let () =
-  Alcotest.run "Suite1"
-    [ test "data/a.json" "source.a"
-        [ [ [ 1, ["keyword.letter"; "source.a"] ],
-            "a" ]
-        ; [ [ 1, ["keyword.letter"; "source.a"]
+  Alcotest.run "Suite1" [
+    test "data/a.json" "source.a" [
+      [
+        { line = "a"
+        ; expected = [ 1, ["keyword.letter"; "source.a"] ] }
+      ];
+      [
+        { line = "a(a)"
+        ; expected =
+            [ 1, ["keyword.letter"; "source.a"]
             ; 2, ["punctuation.paren.open"; "source.a"]
             ; 3, ["keyword.letter"; "expression.group"; "source.a"]
-            ; 4, ["punctuation.paren.close"; "source.a"] ],
-            "a(a)" ]
-        ; [ [ 1, ["keyword.letter"; "source.a"]
-            ; 2, ["punctuation.paren.open"; "source.a"] ],
-            "a("
-          ; [ 1, ["keyword.letter"; "expression.group"; "source.a" ]
-            ; 2, ["punctuation.paren.close"; "source.a"] ],
-            "a)" ] ]
-    ; test "data/while.json" "source.while"
-        [ [ [ 1, ["begin"; "source.while"] ],
-            "a" ]
-        ; [ [ 1, ["begin"; "source.while"]
-            ; 2, ["expression.group"; "source.while"] ],
-            "ac"
-          ; [ 1, ["while"; "source.while"]
-            ; 2, ["keyword.letter"; "expression.group"; "source.while"] ],
-            "bc" ] ] ]
+            ; 4, ["punctuation.paren.close"; "source.a"] ] }
+      ];
+      [
+        { line = "a("
+        ; expected =
+            [ 1, ["keyword.letter"; "source.a"]
+            ; 2, ["punctuation.paren.open"; "source.a"] ] };
+        { line = "a)"
+        ; expected =
+            [ 1, ["keyword.letter"; "expression.group"; "source.a" ]
+            ; 2, ["punctuation.paren.close"; "source.a"] ] }
+      ]
+    ];
+    test "data/while.json" "source.while" [
+      [
+        { line = "a"
+        ; expected = [ 1, ["begin"; "source.while"] ] }
+      ];
+      [
+        { line = "ac"
+        ; expected =
+            [ 1, ["begin"; "source.while"]
+            ; 2, ["expression.group"; "source.while"] ] };
+        { line = "bc"
+        ; expected =
+            [ 1, ["while"; "source.while"]
+            ; 2, ["keyword.letter"; "expression.group"; "source.while"] ] }
+      ]
+    ];
+    (* See https://github.com/microsoft/vscode-textmate/issues/25 *)
+    test "data/multiwhile.json" "source.multiwhile" [
+      [
+        { line = "X"
+        ; expected = [ 1, ["xbegin"; "source.multiwhile"] ] };
+        { line = "xY"
+        ; expected =
+            [ 1, ["xwhile"; "source.multiwhile"]
+            ; 2, ["ybegin"; "xlist"; "source.multiwhile"] ] };
+        { line = "yxy"
+        ; expected =
+            [ 1, ["source.multiwhile"]
+            ; 2, ["xwhile"; "source.multiwhile"]
+            ; 3, ["ywhile"; "xlist"; "source.multiwhile"] ] };
+        { line = "xy"
+        ; expected =
+            [ 1, ["xwhile"; "source.multiwhile"]
+            ; 2, ["ywhile"; "xlist"; "source.multiwhile"] ] };
+        { line = "y"
+        ; expected = [ 1, ["source.multiwhile"] ] }
+      ];
+    ]
+  ]
