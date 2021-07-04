@@ -2,6 +2,10 @@
 
 - Fix handling of while
 - Fix handling of end-delimiter scopes
+- Add type definitions for [Ezjsonm](https://opam.ocaml.org/packages/ezjsonm/)
+  and [Yojson](https://opam.ocaml.org/packages/yojson/) JSON values
+- Add functions for reading JSON-format grammars into Ezjsonm or Yojson
+  values
 - Add tests
 
 ## 0.2.1 (April 9, 2021)
