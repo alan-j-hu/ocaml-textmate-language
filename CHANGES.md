@@ -1,4 +1,4 @@
-## 0.3.0 (July 3, 2021)
+## 0.3.0 (July 4, 2021)
 
 - Fix handling of while
 - Fix handling of end-delimiter scopes
