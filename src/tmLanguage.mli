@@ -72,7 +72,7 @@ val of_yojson_exn : yojson -> grammar
     the plist does not represent a valid TextMate grammar. *)
 
 val empty : stack
-(** The initial state of the code highlighter. *)
+(** The initial state of the tokenizer. *)
 
 type token
 (** A token of code. *)
