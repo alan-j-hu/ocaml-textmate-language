@@ -61,7 +61,7 @@ val find_by_filetype : t -> string -> grammar option
     attribute. *)
 
 val of_plist_exn : plist -> grammar
-(** Reads a TextMate grammar from a plist file. Raises {!exception:Error} if
+(** Reads a TextMate grammar from a PLIST file. Raises {!exception:Error} if
     the plist does not represent a valid TextMate grammar. *)
 
 val of_ezjsonm_exn : ezjsonm -> grammar

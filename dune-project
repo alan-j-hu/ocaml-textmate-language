@@ -16,6 +16,8 @@
   (alcotest (and (>= 1.4) (< 2) :with-test))
   (ezjsonm (and (>= 1.2) (< 2) :with-test))
   (yojson (and (>= 1.7) (< 2) :with-test)))
- (synopsis "Tokenizing source code with TextMate grammars")
+ (synopsis "Tokenizing code with TextMate grammars for syntax highlighting")
  (description "
-Tokenizing source code with TextMate grammars."))
+This package provides functions for reading TextMate grammars and tokenizing
+code on a line-by-line basis. `textmate-language` can read grammars from the
+document types of the `plist-xml`, `ezjsonm`, and `yojson` libraries."))
