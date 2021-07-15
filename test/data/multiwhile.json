@@ -1,6 +1,10 @@
 {
     "name": "multiwhile",
     "scopeName": "source.multiwhile",
+    "fileTypes": [
+        "mw",
+        "multiwhile"
+    ],
     "patterns": [
         { "include": "#xlist" },
         { "include": "#ylist" }

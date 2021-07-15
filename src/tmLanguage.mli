@@ -4,9 +4,6 @@ type t
 type grammar
 (** A TextMate grammar. *)
 
-type stack
-(** The state of the code highlighter. *)
-
 exception Error of string
 [@ocaml.warn_on_literal_pattern]
 (** The error message is purely informational and is not to be matched on. *)
@@ -54,10 +51,14 @@ val add_grammar : t -> grammar -> unit
 (** Add a grammar to the collection. *)
 
 val find_by_name : t -> string -> grammar option
-(** Finds a grammar by its [name] attribute. Case-insensitive. *)
+(** Finds a grammar by its [name] attribute. *)
 
 val find_by_scope_name : t -> string -> grammar option
-(** Finds for a grammar by its [scopeName] attribute. Case-sensitive. *)
+(** Finds a grammar by its [scopeName] attribute. *)
+
+val find_by_filetype : t -> string -> grammar option
+(** Finds a grammar by matching one of the strings in its [fileTypes]
+    attribute. *)
 
 val of_plist_exn : plist -> grammar
 (** Reads a TextMate grammar from a plist file. Raises {!exception:Error} if
@@ -70,6 +71,9 @@ val of_ezjsonm_exn : ezjsonm -> grammar
 val of_yojson_exn : yojson -> grammar
 (** Reads a TextMate grammar from a JSON file. Raises {!exception:Error} if
     the plist does not represent a valid TextMate grammar. *)
+
+type stack
+(** The state of the tokenizer. *)
 
 val empty : stack
 (** The initial state of the tokenizer. *)

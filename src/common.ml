@@ -47,6 +47,7 @@ type repo_item = {
 type grammar = {
   name : string;
   scope_name : string;
+  filetypes : string list;
   patterns : rule list;
   repository : (string, repo_item) Hashtbl.t;
 }
@@ -54,6 +55,7 @@ type grammar = {
 type t = {
   by_name : (string, grammar) Hashtbl.t;
   by_scope_name : (string, grammar) Hashtbl.t;
+  by_filetype : (string, grammar) Hashtbl.t;
 }
 
 type union =
@@ -103,15 +105,20 @@ exception Error of string
 let create () = {
   by_name = Hashtbl.create 23;
   by_scope_name = Hashtbl.create 23;
+  by_filetype = Hashtbl.create 23;
 }
 
 let add_grammar t grammar =
   Hashtbl.add t.by_name (String.lowercase_ascii grammar.name) grammar;
-  Hashtbl.add t.by_scope_name grammar.scope_name grammar
+  Hashtbl.add t.by_scope_name grammar.scope_name grammar;
+  List.iter (fun filetype ->
+      Hashtbl.add t.by_filetype filetype grammar
+    ) grammar.filetypes
 
-let find_by_name t name =
-  Hashtbl.find_opt t.by_name (String.lowercase_ascii name)
+let find_by_name t = Hashtbl.find_opt t.by_name
 
 let find_by_scope_name t = Hashtbl.find_opt t.by_scope_name
+
+let find_by_filetype t = Hashtbl.find_opt t.by_filetype
 
 let error msg = raise (Error msg)

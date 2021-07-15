@@ -1,3 +1,8 @@
+## 0.4.0 (July 15, 2021)
+
+- Add `find_by_filetype` function.
+- Make `find_by_scope_name` case-sensitive.
+
 ## 0.3.0 (July 4, 2021)
 
 - Fix handling of while

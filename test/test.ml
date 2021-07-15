@@ -36,10 +36,41 @@ let read_ezjsonm filename =
   in
   TmLanguage.of_ezjsonm_exn json
 
-let check data name cases () =
+let check_find grammar scope_name filetypes () =
   let open TmLanguage in
   let t = create () in
-  add_grammar t data;
+  let check p =
+    Alcotest.check
+      Alcotest.bool scope_name true
+      (p (TmLanguage.find_by_scope_name t scope_name));
+    List.iter (fun filetype ->
+        Alcotest.check
+          Alcotest.bool filetype true
+          (p (TmLanguage.find_by_filetype t filetype));
+      ) filetypes
+  in
+  check ((=) None);
+  add_grammar t grammar;
+  check begin function
+    | None -> false
+    | Some grammar' -> grammar == grammar'
+  end
+
+let test_find filename scope_name filetypes =
+  ( filename
+  , [ Alcotest.test_case
+        "Yojson"
+        `Quick
+        (check_find (read_yojson_basic filename) scope_name filetypes)
+    ; Alcotest.test_case
+        "Ezjsonm"
+        `Quick
+        (check_find (read_ezjsonm filename) scope_name filetypes) ] )
+
+let check_tokenize grammar name cases () =
+  let open TmLanguage in
+  let t = create () in
+  add_grammar t grammar;
   let tested_type = Alcotest.(list (pair int (list string))) in
   let check lines =
     ignore (List.fold_left (fun stack { line; expected } ->
@@ -52,16 +83,23 @@ let check data name cases () =
   in
   List.iter check cases
 
-let test filename name cases =
-  ( name
+let test_tokenize filename scope_name cases =
+  ( filename
   , [ Alcotest.test_case
-        "Yojson" `Quick (check (read_yojson_basic filename) name cases)
+        "Yojson"
+        `Quick
+        (check_tokenize (read_yojson_basic filename) scope_name cases)
     ; Alcotest.test_case
-        "Ezjsonm" `Quick (check (read_ezjsonm filename) name cases) ] )
+        "Ezjsonm"
+        `Quick
+        (check_tokenize (read_ezjsonm filename) scope_name cases) ] )
 
 let () =
-  Alcotest.run "Suite1" [
-    test "data/a.json" "source.a" [
+  Alcotest.run "Finding" [
+    test_find "data/multiwhile.json" "source.multiwhile" ["mw"; "multiwhile"]
+  ];
+  Alcotest.run "Highlighting" [
+    test_tokenize "data/a.json" "source.a" [
       [
         { line = "a"
         ; expected = [ 1, ["keyword.letter"; "source.a"] ] }
@@ -85,7 +123,7 @@ let () =
             ; 2, ["punctuation.paren.close"; "source.a"] ] }
       ]
     ];
-    test "data/while.json" "source.while" [
+    test_tokenize "data/while.json" "source.while" [
       [
         { line = "a"
         ; expected = [ 1, ["begin"; "source.while"] ] }
@@ -102,7 +140,7 @@ let () =
       ]
     ];
     (* See https://github.com/microsoft/vscode-textmate/issues/25 *)
-    test "data/multiwhile.json" "source.multiwhile" [
+    test_tokenize "data/multiwhile.json" "source.multiwhile" [
       [
         { line = "X"
         ; expected = [ 1, ["xbegin"; "source.multiwhile"] ] };

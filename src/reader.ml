@@ -133,6 +133,11 @@ let of_doc_exn (plist : union) =
   let obj = get_dict plist in
   { name = get_string (find_exn "name" obj)
   ; scope_name = get_string (find_exn "scopeName" obj)
+  ; filetypes =
+      begin match List.assoc_opt "fileTypes" obj with
+        | None -> []
+        | Some filetypes -> get_list get_string filetypes
+      end
   ; patterns = get_patterns obj
   ; repository =
       match List.assoc_opt "repository" obj with
