@@ -115,7 +115,8 @@ let add_grammar t grammar =
       Hashtbl.add t.by_filetype filetype grammar
     ) grammar.filetypes
 
-let find_by_name t = Hashtbl.find_opt t.by_name
+let find_by_name t name =
+  Hashtbl.find_opt t.by_name (String.lowercase_ascii name)
 
 let find_by_scope_name t = Hashtbl.find_opt t.by_scope_name
 

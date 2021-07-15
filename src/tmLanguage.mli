@@ -51,14 +51,14 @@ val add_grammar : t -> grammar -> unit
 (** Add a grammar to the collection. *)
 
 val find_by_name : t -> string -> grammar option
-(** Finds a grammar by its [name] attribute. *)
+(** Finds a grammar by its [name] attribute. Case-insensitive. *)
 
 val find_by_scope_name : t -> string -> grammar option
-(** Finds a grammar by its [scopeName] attribute. *)
+(** Finds a grammar by its [scopeName] attribute. Case-sensitive. *)
 
 val find_by_filetype : t -> string -> grammar option
 (** Finds a grammar by matching one of the strings in its [fileTypes]
-    attribute. *)
+    attribute. Case-sensitive. *)
 
 val of_plist_exn : plist -> grammar
 (** Reads a TextMate grammar from a PLIST file. Raises {!exception:Error} if
