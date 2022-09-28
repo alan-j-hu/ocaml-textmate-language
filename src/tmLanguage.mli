@@ -104,6 +104,7 @@ val tokenize_exn : t -> grammar -> stack -> string -> token list * stack
     Postconditions:
 
     - [tokens] is nonempty.
+    - The ending positions of [tokens] are strictly increasing.
     - The [ending] of the last token in [tokens] is always [String.length line].
 
     Raises {!exception:Error} if it tries to match a malformed [end] or [while]
