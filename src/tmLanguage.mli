@@ -45,10 +45,10 @@ type yojson =
     version 1.7.0), but is reproduced here as not to depend on [yojson]. *)
 
 val create : unit -> t
-(** Create an empty collection of grammars. *)
+(** Creates an empty collection of grammars. *)
 
 val add_grammar : t -> grammar -> unit
-(** Add a grammar to the collection. *)
+(** Adds a grammar to the collection. *)
 
 val find_by_name : t -> string -> grammar option
 (** Finds a grammar by its [name] attribute. Case-insensitive. *)
