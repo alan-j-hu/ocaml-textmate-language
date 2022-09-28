@@ -162,44 +162,20 @@ let handle_captures
             (* Capture wasn't found, ignore *)
             (start, stack, tokens)
           else
-            match stack with
-            | [] ->
-               let cap_start = if cap_start < start then start else cap_start in
-               let cap_end = if cap_end > mat_end then mat_end else cap_end in
-               let tokens =
-                 { scopes = add_scopes scopes [default]
-                 ; ending = cap_start }
-                 :: tokens
-               in
-               ( cap_start
-               , [(cap_end, capture.capture_name)]
-               , tokens )
-            | (top_end, top_name) :: stack' ->
-               let cap_start = if cap_start < start then start else cap_start in
-               if cap_start >= top_end then
-                 let under = match stack' with
-                   | [] -> mat_end
-                   | (end_, _) :: _ -> end_
-                 in
-                 let cap_end = if cap_end > under then under else cap_end in
-                 let tokens =
-                   { scopes = add_scopes scopes (new_scopes [top_name] stack')
-                   ; ending = cap_start } :: tokens
-                 in
-                 (* Pop off the stack, then push the capture *)
-                 ( top_end
-                 , (cap_end, capture.capture_name) :: stack'
-                 , tokens )
-               else
-                 let cap_end = if cap_end > top_end then top_end else cap_end in
-                 let tokens =
-                   { scopes = add_scopes scopes (new_scopes [top_name] stack)
-                   ; ending = cap_start } :: tokens
-                 in
-                 (* Push the capture on the stack *)
-                 ( cap_start
-                 , (cap_end, capture.capture_name) :: stack
-                 , tokens )
+            let rec pop start tokens = function
+              | [] ->
+                ( { scopes = add_scopes scopes [default]
+                  ; ending = start } :: tokens, [])
+              | (ending, scope) :: stack ->
+                if start >= ending then
+                  pop start ({ending; scopes = add_scopes scopes [scope]} :: tokens) stack
+                else
+                  (tokens, stack)
+            in
+            let cap_start = if cap_start < start then start else cap_start in
+            let cap_end = if cap_end > mat_end then mat_end else cap_end in
+            let tokens, stack = pop cap_start tokens stack in
+            ( cap_start, (cap_end, capture.capture_name) :: stack, tokens )
       ) captures (mat_start, [], tokens)
   in
   let rec pop tokens = function
