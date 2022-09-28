@@ -18,5 +18,4 @@ jobs:
         with:
           ocaml-compiler: ${{ matrix.ocaml-compiler }}
 
-      - run: sudo apt-get install libonig-dev
       - run: opam install . -t
