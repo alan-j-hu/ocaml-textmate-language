@@ -9,6 +9,7 @@ document types of the `plist-xml`, `ezjsonm`, and `yojson` libraries."""
 maintainer: ["Alan Hu <alanh@ccs.neu.edu>"]
 authors: ["Alan Hu <alanh@ccs.neu.edu>"]
 license: "MIT"
+tags: ["highlighting"]
 homepage: "https://github.com/alan-j-hu/ocaml-textmate-language"
 doc: "https://alan-j-hu.github.io/ocaml-textmate-language/"
 bug-reports: "https://github.com/alan-j-hu/ocaml-textmate-language/issues"

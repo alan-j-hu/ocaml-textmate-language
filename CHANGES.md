@@ -1,3 +1,7 @@
+## 0.3.2 (September 28, 2022)
+
+- Fix bug of incorrect, non-increasing string indices being returned.
+
 ## 0.3.1 (July 15, 2021)
 
 - Add `find_by_filetype` function.

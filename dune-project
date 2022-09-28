@@ -17,6 +17,7 @@
   (ezjsonm (and (>= 1.2) (< 2) :with-test))
   (yojson (and (>= 1.7) (< 2) :with-test)))
  (synopsis "Tokenizing code with TextMate grammars for syntax highlighting")
+ (tags (highlighting))
  (description "
 This package provides functions for reading TextMate grammars and tokenizing
 code on a line-by-line basis. `textmate-language` can read grammars from the
