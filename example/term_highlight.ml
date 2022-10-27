@@ -11,6 +11,8 @@ let style = function
   | "keyword" :: "control" :: _-> [ANSITerminal.magenta]
   | "keyword" :: "operator" :: _ -> [ANSITerminal.yellow]
   | "keyword" :: _ -> [ANSITerminal.Bold]
+  | "storage" :: "modifier" :: _ -> [ANSITerminal.Bold]
+  | "storage" :: "type" :: _ -> [ANSITerminal.blue]
   | "support" :: "other" :: "module" :: _-> [ANSITerminal.green]
   | "meta" :: "module-reference" :: _ -> [ANSITerminal.green]
   | "punctuation" :: "definition" :: "comment" :: _ -> [ANSITerminal.cyan]

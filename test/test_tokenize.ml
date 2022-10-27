@@ -22,7 +22,7 @@ let () =
             ; 2, ["punctuation.paren.open"; "source.a"] ] };
         { line = "a)"
         ; expected =
-            [ 1, ["keyword.letter"; "expression.group"; "source.a" ]
+            [ 1, ["keyword.letter"; "expression.group"; "source.a"]
             ; 2, ["punctuation.paren.close"; "source.a"] ] }
       ]
     ];

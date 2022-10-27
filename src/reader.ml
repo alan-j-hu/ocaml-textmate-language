@@ -26,23 +26,29 @@ let compile_regex re =
   | Error msg -> error (re ^ ": " ^ msg)
   | Ok re -> re
 
-let rec get_captures acc = function
-  | [] -> acc
-  | (k, v) :: kvs ->
-    let idx = match int_of_string_opt k with
-      | Some int -> int
-      | None -> error (k ^ " is not an integer.")
-    in
-    let v = get_dict v in
-    let capture_name = match List.assoc_opt "name" v with
-      | None -> None
-      | Some name -> Some (get_string name)
-    in
-    let capture_patterns = match List.assoc_opt "patterns" v with
-      | None -> []
-      | Some v -> get_pattern_list v
-    in
-    get_captures (IntMap.add idx { capture_name; capture_patterns } acc) kvs
+let rec get_captures kvs =
+  let tbl = Hashtbl.create 21 in
+  let rec loop = function
+    | [] -> ()
+    | (k, v) :: kvs ->
+      let cap = match int_of_string_opt k with
+        | Some int -> Capture_idx int
+        | None -> Capture_name k
+      in
+      let v = get_dict v in
+      let capture_name = match List.assoc_opt "name" v with
+        | None -> None
+        | Some name -> Some (get_string name)
+      in
+      let capture_patterns = match List.assoc_opt "patterns" v with
+        | None -> []
+        | Some v -> get_pattern_list v
+      in
+      Hashtbl.replace tbl cap { capture_name; capture_patterns };
+      loop kvs
+  in
+  loop kvs;
+  tbl
 and get_pattern_list l = get_list (fun x -> patterns_of_plist (get_dict x)) l
 and get_patterns obj = find_exn "patterns" obj |> get_pattern_list
 and patterns_of_plist obj =
@@ -66,8 +72,8 @@ and patterns_of_plist obj =
         ; name = Option.map get_string (List.assoc_opt "name" obj)
         ; captures =
             match List.assoc_opt "captures" obj with
-            | None -> IntMap.empty
-            | Some value -> get_captures IntMap.empty (get_dict value) }
+            | None -> Hashtbl.create 0
+            | Some value -> get_captures (get_dict value) }
     | None, Some b ->
       let e, key, delim_kind =
         match List.assoc_opt "end" obj, List.assoc_opt "while" obj with
@@ -78,15 +84,15 @@ and patterns_of_plist obj =
       let delim_begin_captures, delim_end_captures =
         match List.assoc_opt "captures" obj with
         | Some value ->
-          let captures = get_captures IntMap.empty (get_dict value) in
+          let captures = get_captures (get_dict value) in
           captures, captures
         | None ->
           ( (match List.assoc_opt "beginCaptures" obj with
-             | Some value -> get_captures IntMap.empty (get_dict value)
-             | None -> IntMap.empty)
+             | Some value -> get_captures (get_dict value)
+             | None -> Hashtbl.create 0)
           , (match List.assoc_opt key obj with
-             | Some value -> get_captures IntMap.empty (get_dict value)
-             | None -> IntMap.empty) )
+             | Some value -> get_captures (get_dict value)
+             | None -> Hashtbl.create 0) )
       in
       Delim
         { delim_begin = compile_regex (get_string b)

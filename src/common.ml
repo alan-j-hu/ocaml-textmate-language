@@ -1,3 +1,7 @@
+type capture_key =
+  | Capture_idx of int
+  | Capture_name of string
+
 module IntMap = Map.Make(Int)
 
 type capture = {
@@ -10,7 +14,7 @@ and regex = Oniguruma.Encoding.utf8 Oniguruma.t
 and match_ = {
   name : string option;
   pattern : regex;
-  captures : capture IntMap.t;
+  captures : (capture_key, capture) Hashtbl.t;
 }
 
 and delim_kind = End | While
@@ -21,8 +25,8 @@ and delim = {
   delim_patterns : rule list;
   delim_name : string option;
   delim_content_name : string option;
-  delim_begin_captures : capture IntMap.t;
-  delim_end_captures : capture IntMap.t;
+  delim_begin_captures : (capture_key, capture) Hashtbl.t;
+  delim_end_captures : (capture_key, capture) Hashtbl.t;
   delim_apply_end_pattern_last : bool;
   delim_kind : delim_kind;
 }

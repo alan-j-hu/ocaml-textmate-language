@@ -144,7 +144,17 @@ let rec new_scopes acc = function
 
 (* Emit tokens for the match region's captures. *)
 let handle_captures
-    scopes default mat_start mat_end region captures tokens =
+    re scopes default mat_start mat_end region captures tokens =
+  let int_map =
+    Hashtbl.fold
+      (fun k v acc ->
+         match k with
+         | Capture_idx int -> IntMap.add int v acc
+         | Capture_name str ->
+           Array.fold_left (fun acc idx -> IntMap.add idx v acc)
+             IntMap.empty (Oniguruma.name_to_group_numbers re str))
+      captures IntMap.empty
+  in
   let _, stack, tokens =
     (* Regex captures are ordered by their left parentheses. Do a depth-first
        preorder traversal by keeping a stack of captures. *)
@@ -176,7 +186,7 @@ let handle_captures
             let cap_end = if cap_end > mat_end then mat_end else cap_end in
             let tokens, stack = pop cap_start tokens stack in
             ( cap_start, (cap_end, capture.capture_name) :: stack, tokens )
-      ) captures (mat_start, [], tokens)
+      ) int_map (mat_start, [], tokens)
   in
   let rec pop tokens = function
     | [] -> tokens
@@ -231,7 +241,8 @@ let rec match_line ~t ~grammar ~stack ~pos ~toks ~line rem_pats =
           assert (start = pos);
           let toks = { scopes; ending = pos } :: toks in
           let toks =
-            handle_captures scopes m.name pos end_ region m.captures toks
+            handle_captures
+              m.pattern scopes m.name pos end_ region m.captures toks
           in
           let toks =
             { scopes = add_scopes scopes [m.name]; ending = end_ } :: toks
@@ -252,7 +263,7 @@ let rec match_line ~t ~grammar ~stack ~pos ~toks ~line rem_pats =
           assert (start = pos);
           let toks = { scopes; ending = pos } :: toks in
           let toks =
-            handle_captures scopes d.delim_name pos end_ region
+            handle_captures d.delim_begin scopes d.delim_name pos end_ region
               d.delim_begin_captures toks
           in
           let toks =
@@ -313,10 +324,8 @@ let rec match_line ~t ~grammar ~stack ~pos ~toks ~line rem_pats =
     (* Try to match the delimiter's end pattern *)
     let delim = stack_top.stack_delim in
     let end_match =
-      match
-        Oniguruma.match_ (match_subst stack_top) line pos
-          Oniguruma.Options.none
-      with
+      let re = match_subst stack_top in
+      match Oniguruma.match_ re line pos Oniguruma.Options.none with
       | None -> None
       | Some region ->
         let start = Oniguruma.Region.capture_beg region 0 in
@@ -330,7 +339,7 @@ let rec match_line ~t ~grammar ~stack ~pos ~toks ~line rem_pats =
           ; ending = pos } :: toks in
         let toks =
           handle_captures
-            stack_top.stack_prev_scopes delim.delim_name pos end_ region
+            re stack_top.stack_prev_scopes delim.delim_name pos end_ region
             delim.delim_end_captures toks
         in Some (end_, toks)
     in
@@ -388,11 +397,8 @@ let tokenize_exn t grammar stack line =
           if pos' = String.length line then
             (toks, pos, rem_stack)
           else
-            let match_result =
-              Oniguruma.match_ (match_subst se) line pos'
-                Oniguruma.Options.none
-            in
-            match match_result with
+            let re = match_subst se in
+            match Oniguruma.match_ re line pos' Oniguruma.Options.none with
             | None -> loop (pos' + 1)
             | Some region ->
               let start = Oniguruma.Region.capture_beg region 0 in
@@ -403,7 +409,7 @@ let tokenize_exn t grammar stack line =
               in
               let toks =
                 handle_captures
-                  se.stack_prev_scopes se.stack_delim.delim_name pos end_
+                  re se.stack_prev_scopes se.stack_delim.delim_name pos end_
                   region se.stack_delim.delim_end_captures toks
               in
               let toks =
