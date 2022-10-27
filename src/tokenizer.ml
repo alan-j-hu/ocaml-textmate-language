@@ -36,25 +36,10 @@ let next_pats grammar = function
   | s :: _ -> s.stack_delim.delim_patterns
 
 (* Should the character be escaped in a regex? *)
-let is_special ch =
-  ch = '\\' ||
-  ch = '\'' ||
-  ch = '|' ||
-  ch = '.' ||
-  ch = '*' ||
-  ch = '+' ||
-  ch = '?' ||
-  ch = '^' ||
-  ch = '$' ||
-  ch = '-' ||
-  ch = ':' ||
-  ch = '~' ||
-  ch = '#' ||
-  ch = '&' ||
-  ch = '(' || ch = ')' ||
-  ch = '[' || ch = ']' ||
-  ch = '{' || ch = '}' ||
-  ch = '<' || ch = '>'
+let is_special = function
+  | '|' | '.' | '*' | '+' | '?' | '^' | '$' | '-' | ':' | '~' | '#' | '&'
+  | '(' | ')' | '[' | ']' | '{' | '}' | '<' | '>' | '\\' | '\'' -> true
+  | _ -> false
 
 (* Insert the substring of [line] from [beg] to [end_] into [buf]. *)
 let insert_capture buf line beg end_ =
