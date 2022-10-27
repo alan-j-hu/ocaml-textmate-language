@@ -113,10 +113,10 @@ let create () = {
 }
 
 let add_grammar t grammar =
-  Hashtbl.add t.by_name (String.lowercase_ascii grammar.name) grammar;
-  Hashtbl.add t.by_scope_name grammar.scope_name grammar;
+  Hashtbl.replace t.by_name (String.lowercase_ascii grammar.name) grammar;
+  Hashtbl.replace t.by_scope_name grammar.scope_name grammar;
   List.iter (fun filetype ->
-      Hashtbl.add t.by_filetype filetype grammar
+      Hashtbl.replace t.by_filetype filetype grammar
     ) grammar.filetypes
 
 let find_by_name t name =
