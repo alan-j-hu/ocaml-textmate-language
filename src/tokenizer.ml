@@ -123,10 +123,6 @@ let remove_empties =
         go (tok :: acc) toks
   in go []
 
-let rec new_scopes acc = function
-  | [] -> acc
-  | (_, scope) :: xs -> new_scopes (scope :: acc) xs
-
 (* Emit tokens for the match region's captures. *)
 let handle_captures
     re scopes default mat_start mat_end region captures tokens =
