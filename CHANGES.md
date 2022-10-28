@@ -1,3 +1,8 @@
+## 0.3.3 (October 27, 2022)
+
+- Support named capture groups.
+- Fix mapping scopes to captures.
+
 ## 0.3.2 (September 28, 2022)
 
 - Fix bug of incorrect, non-increasing string indices being returned.

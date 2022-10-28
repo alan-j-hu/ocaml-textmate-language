@@ -3,7 +3,7 @@
 (authors "Alan Hu <alanh@ccs.neu.edu>")
 (maintainers "Alan Hu <alanh@ccs.neu.edu>")
 (license MIT)
-(documentation https://alan-j-hu.github.io/ocaml-textmate-language/)
+(documentation https://ocaml.org/p/textmate-language/)
 (source (github alan-j-hu/ocaml-textmate-language))
 (name textmate-language)
 

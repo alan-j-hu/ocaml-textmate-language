@@ -11,7 +11,7 @@ authors: ["Alan Hu <alanh@ccs.neu.edu>"]
 license: "MIT"
 tags: ["highlighting"]
 homepage: "https://github.com/alan-j-hu/ocaml-textmate-language"
-doc: "https://alan-j-hu.github.io/ocaml-textmate-language/"
+doc: "https://ocaml.org/p/textmate-language/"
 bug-reports: "https://github.com/alan-j-hu/ocaml-textmate-language/issues"
 depends: [
   "dune" {>= "2.7"}
