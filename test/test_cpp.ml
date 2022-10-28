@@ -6,7 +6,7 @@ let () =
       [
         { line = "int main()"
         ; expected =
-           [ 3, ["meta.function.definition.cpp"; "source.cpp"]
+           [ 3, ["meta.qualified_type.cpp"; "source.cpp"]
            ; 4, ["source.cpp"]
            ; 8, ["entity.name.function.definition.cpp"; "source.cpp"]
            ; 9, [ "punctuation.section.parameters.begin.bracket.round.cpp"

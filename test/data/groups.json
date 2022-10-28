@@ -1,0 +1,33 @@
+{
+    "name": "groups",
+    "scopeName": "source.groups",
+    "patterns": [{ "include": "#expr" }],
+    "repository": {
+        "expr": {
+            "patterns": [
+                {
+                    "match": "#(?<x>[0-9a-fA-F]+)",
+                    "name": "keyword.operator",
+                    "captures": {
+                        "x": { "name": "constant.numeric" }
+                    }
+                },
+                { "include": "#parens" }
+            ]
+        },
+        "parens": {
+            "begin": "\\((?<y>{)",
+            "end": "(?<z>})\\)",
+            "beginCaptures": {
+                "0": { "name": "punctuation.paren.open" },
+                "y": { "name": "punctuation.paren.open.groups" }
+            },
+            "endCaptures": {
+                "0": { "name": "punctuation.paren.close" },
+                "z": { "name": "punctuation.paren.close.groups" }
+            },
+            "name": "expression.group",
+            "patterns": [{ "include": "#expr" }]
+        }
+    }
+}

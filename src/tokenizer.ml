@@ -161,25 +161,25 @@ let handle_captures
               | [] ->
                 ( { scopes = add_scopes scopes [default]
                   ; ending = start } :: tokens, [])
-              | (ending, scope) :: stack ->
+              | ((ending, scopes) :: stack') as stack ->
                 if start >= ending then
-                  pop start ({ending; scopes = add_scopes scopes [scope]} :: tokens) stack
+                  (* The next capture comes after the previous one *)
+                  pop start ({ scopes; ending } :: tokens) stack'
                 else
-                  (tokens, stack)
+                  (* The next capture goes on top of the previous one *)
+                  ({ scopes; ending = start } :: tokens, stack)
             in
             let cap_start = if cap_start < start then start else cap_start in
             let cap_end = if cap_end > mat_end then mat_end else cap_end in
             let tokens, stack = pop cap_start tokens stack in
-            ( cap_start, (cap_end, capture.capture_name) :: stack, tokens )
+            ( cap_start
+            , (cap_end, add_scopes scopes [capture.capture_name]) :: stack
+            , tokens )
       ) int_map (mat_start, [], tokens)
   in
   let rec pop tokens = function
     | [] -> tokens
-    | (ending, scope) :: stack ->
-      pop
-        ({ scopes = add_scopes scopes (new_scopes [scope] stack)
-         ; ending } :: tokens)
-        stack
+    | (ending, scopes) :: stack -> pop ({ scopes; ending } :: tokens) stack
   in pop tokens stack
 
 let get_whiles =

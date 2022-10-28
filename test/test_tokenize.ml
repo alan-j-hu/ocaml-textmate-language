@@ -63,5 +63,18 @@ let () =
         { line = "y"
         ; expected = [ 1, ["source.multiwhile"] ] }
       ];
+    ];
+    test_tokenize "data/groups.json" "source.groups" [
+      [
+        { line = "({#aaff59})"
+        ; expected =
+            [ 1, ["punctuation.paren.open"; "source.groups"]
+            ; 2, ["punctuation.paren.open.groups"; "source.groups"]
+            ; 3, ["keyword.operator"; "expression.group"; "source.groups"]
+            ; 9, ["constant.numeric"; "expression.group"; "source.groups"]
+            ; 10, ["punctuation.paren.close.groups"; "source.groups"]
+            ; 11, ["punctuation.paren.close"; "source.groups"] ]
+        }
+      ];
     ]
   ]
