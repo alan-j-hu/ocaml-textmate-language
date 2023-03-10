@@ -4,8 +4,7 @@ type t
 type grammar
 (** A TextMate grammar. *)
 
-exception Error of string
-[@ocaml.warn_on_literal_pattern]
+exception Error of string [@ocaml.warn_on_literal_pattern]
 (** The error message is purely informational and is not to be matched on. *)
 
 type plist =

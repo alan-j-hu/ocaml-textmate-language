@@ -1,0 +1,10 @@
+profile=conventional
+ocaml-version=5.0.0
+break-cases=toplevel
+break-separators=after
+cases-exp-indent=2
+margin=79
+dock-collection-brackets
+space-around-records
+space-around-lists
+space-around-arrays
