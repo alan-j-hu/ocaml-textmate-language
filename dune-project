@@ -11,7 +11,7 @@
  (depends
   (oniguruma (and (>= 0.1.2) (< 0.2.0)))
   (ocaml (>= 4.08))
-  (plist-xml (and (>= 0.4) :with-test))
+  (plist-xml (and (>= 0.5) :with-test))
   (alcotest (and (>= 1.4) (< 2) :with-test))
   (ezjsonm (and (>= 1.2) (< 2) :with-test))
   (yojson (and (>= 1.7) (< 2) :with-test)))

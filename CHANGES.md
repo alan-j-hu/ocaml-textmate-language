@@ -1,6 +1,6 @@
-## 0.3.4 (March 10, 2023)
+## 0.3.4 (March 14, 2023)
 
-- Update the test dependency `plist-xml` to version 0.4.
+- Update the test dependency `plist-xml` to version 0.5.
 
 ## 0.3.3 (October 27, 2022)
 

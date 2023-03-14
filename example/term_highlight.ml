@@ -63,7 +63,7 @@ let () =
       let chan = open_in Sys.argv.(i) in
       let plist =
         Fun.protect
-          (fun () -> Plist_xml.of_channel chan)
+          (fun () -> Plist_xml.from_channel chan)
           ~finally:(fun () -> close_in chan)
       in
       let grammar = TmLanguage.of_plist_exn plist in
