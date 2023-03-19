@@ -9,11 +9,11 @@
 (package
  (name textmate-language)
  (depends
-  (oniguruma (and (>= 0.1.2) (< 0.2.0)))
+  (oniguruma (>= 0.1.2))
   (ocaml (>= 4.08))
   (plist-xml (and (>= 0.5) :with-test))
-  (alcotest (and (>= 1.4) (< 2) :with-test))
-  (ezjsonm (and (>= 1.2) (< 2) :with-test))
+  (alcotest (and (>= 1.4) :with-test))
+  (ezjsonm (and (>= 1.2) :with-test))
   (yojson (and (>= 1.7) (< 2) :with-test)))
  (synopsis "Tokenizing code with TextMate grammars for syntax highlighting")
  (tags (highlighting))

@@ -14,11 +14,11 @@ homepage: "https://github.com/alan-j-hu/ocaml-textmate-language"
 bug-reports: "https://github.com/alan-j-hu/ocaml-textmate-language/issues"
 depends: [
   "dune" {>= "2.7"}
-  "oniguruma" {>= "0.1.2" & < "0.2.0"}
+  "oniguruma" {>= "0.1.2"}
   "ocaml" {>= "4.08"}
   "plist-xml" {>= "0.5" & with-test}
-  "alcotest" {>= "1.4" & < "2" & with-test}
-  "ezjsonm" {>= "1.2" & < "2" & with-test}
+  "alcotest" {>= "1.4" & with-test}
+  "ezjsonm" {>= "1.2" & with-test}
   "yojson" {>= "1.7" & < "2" & with-test}
   "odoc" {with-doc}
 ]
