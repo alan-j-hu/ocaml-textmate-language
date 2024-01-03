@@ -89,13 +89,13 @@ and patterns_of_plist obj =
         | Some value ->
           let captures = get_captures (get_dict value) in
           (captures, captures)
-        | None -> (
+        | None ->
           ( (match List.assoc_opt "beginCaptures" obj with
             | Some value -> get_captures (get_dict value)
             | None -> Hashtbl.create 0),
             match List.assoc_opt key obj with
             | Some value -> get_captures (get_dict value)
-            | None -> Hashtbl.create 0 ))
+            | None -> Hashtbl.create 0 )
       in
       Delim
         {

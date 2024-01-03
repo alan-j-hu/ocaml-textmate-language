@@ -83,11 +83,18 @@ let check_tokenize grammar name cases () =
   in
   List.iter check cases
 
-let test_tokenize filename scope_name cases =
+let test_tokenize_json filename scope_name cases =
   ( filename,
     [
       Alcotest.test_case "Yojson" `Quick
         (check_tokenize (read_yojson_basic filename) scope_name cases);
       Alcotest.test_case "Ezjsonm" `Quick
         (check_tokenize (read_ezjsonm filename) scope_name cases);
+    ] )
+
+let test_tokenize_plist filename scope_name cases =
+  ( filename,
+    [
+      Alcotest.test_case "Plist" `Quick
+        (check_tokenize (read_plist filename) scope_name cases);
     ] )

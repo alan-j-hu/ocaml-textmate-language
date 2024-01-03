@@ -1,5 +1,5 @@
 (tests
- (names test_find test_tokenize test_cpp)
+ (names test_find test_tokenize test_cpp test_csharp)
  (deps
   (glob_files data/*))
  (libraries alcotest ezjsonm plist-xml textmate-language yojson))

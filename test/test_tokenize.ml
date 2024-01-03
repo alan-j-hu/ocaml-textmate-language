@@ -3,7 +3,7 @@ open Util
 let () =
   Alcotest.run "Highlighting"
     [
-      test_tokenize "data/a.json" "source.a"
+      test_tokenize_json "data/a.json" "source.a"
         [
           [
             {
@@ -42,7 +42,7 @@ let () =
             };
           ];
         ];
-      test_tokenize "data/while.json" "source.while"
+      test_tokenize_json "data/while.json" "source.while"
         [
           [ { line = "a"; expected = [ (1, [ "begin"; "source.while" ]) ] } ];
           [
@@ -65,7 +65,7 @@ let () =
           ];
         ];
       (* See https://github.com/microsoft/vscode-textmate/issues/25 *)
-      test_tokenize "data/multiwhile.json" "source.multiwhile"
+      test_tokenize_json "data/multiwhile.json" "source.multiwhile"
         [
           [
             {
@@ -100,7 +100,7 @@ let () =
             { line = "y"; expected = [ (1, [ "source.multiwhile" ]) ] };
           ];
         ];
-      test_tokenize "data/groups.json" "source.groups"
+      test_tokenize_json "data/groups.json" "source.groups"
         [
           [
             {

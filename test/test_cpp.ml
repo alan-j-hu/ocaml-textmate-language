@@ -3,7 +3,7 @@ open Util
 let () =
   Alcotest.run "C++"
     [
-      test_tokenize "data/cpp.tmLanguage.json" "source.cpp"
+      test_tokenize_json "data/cpp.tmLanguage.json" "source.cpp"
         [
           [
             {

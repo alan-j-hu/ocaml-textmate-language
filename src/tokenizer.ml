@@ -120,56 +120,64 @@ let remove_empties =
 (* Emit tokens for the match region's captures. *)
 let handle_captures re scopes default mat_start mat_end region captures tokens
     =
-  let int_map =
-    Hashtbl.fold
-      (fun k v acc ->
-        match k with
-        | Capture_idx int -> IntMap.add int v acc
-        | Capture_name str ->
-          Array.fold_left
-            (fun acc idx -> IntMap.add idx v acc)
-            IntMap.empty
-            (Oniguruma.name_to_group_numbers re str))
-      captures IntMap.empty
+  let captures =
+    Array.concat
+      (Hashtbl.fold
+         (fun k capture acc ->
+           let captures =
+             match k with
+             | Capture_idx idx -> [| (idx, capture) |]
+             | Capture_name str ->
+               Array.map
+                 (fun idx -> (idx, capture))
+                 (Oniguruma.name_to_group_numbers re str)
+           in
+           captures :: acc)
+         captures [])
+  in
+  let captures = Array.to_list captures in
+  let captures =
+    List.filter_map
+      (fun (idx, capture) ->
+        if idx < 0 || idx >= Oniguruma.Region.length region then None
+        else
+          let beg = Oniguruma.Region.capture_beg region idx in
+          let end_ = Oniguruma.Region.capture_end region idx in
+          Some (capture, beg, end_))
+      captures
+  in
+  let captures =
+    List.stable_sort
+      (fun (_, a, b) (_, c, d) -> compare (a, b) (d, c))
+      captures
   in
   let _, stack, tokens =
-    (* Regex captures are ordered by their left parentheses. Do a depth-first
-       preorder traversal by keeping a stack of captures. *)
-    IntMap.fold
-      (fun idx capture (start, stack, tokens) ->
-        (* If the capture mentions a lookahead, it can go past the bounds of
-           its parent. The match is capped at the boundary for the parent. Is
-           this the right decision to make? Clearly the writer of the grammar
-           intended for the capture to exceed the parent in this case. *)
-        if idx < 0 || idx >= Oniguruma.Region.length region then
+    (* Do a depth-first traversal by keeping a stack of captures. *)
+    List.fold_left
+      (fun (start, stack, tokens) (capture, cap_start, cap_end) ->
+        (* If the capture mentions a lookahead, it may go past the bounds of
+           its parent. Therefore, cap it inside the bounds of the match. *)
+        if cap_start = -1 then
+          (* Capture wasn't found, ignore *)
           (start, stack, tokens)
         else
-          let cap_start = Oniguruma.Region.capture_beg region idx in
-          let cap_end = Oniguruma.Region.capture_end region idx in
-          if cap_start = -1 then
-            (* Capture wasn't found, ignore *)
-            (start, stack, tokens)
-          else
-            let rec pop start tokens = function
-              | [] ->
-                ( { scopes = add_scopes scopes [ default ]; ending = start }
-                  :: tokens,
-                  [] )
-              | (ending, scopes) :: stack' as stack ->
-                if start >= ending then
-                  (* The next capture comes after the previous one *)
-                  pop start ({ scopes; ending } :: tokens) stack'
-                else
-                  (* The next capture goes on top of the previous one *)
-                  ({ scopes; ending = start } :: tokens, stack)
-            in
-            let cap_start = if cap_start < start then start else cap_start in
-            let cap_end = if cap_end > mat_end then mat_end else cap_end in
-            let tokens, stack = pop cap_start tokens stack in
-            ( cap_start,
-              (cap_end, add_scopes scopes [ capture.capture_name ]) :: stack,
-              tokens ))
-      int_map (mat_start, [], tokens)
+          (* Pop while start is greater than or equal to stack top *)
+          let rec pop start tokens = function
+            | [] ->
+              let ending = if start > mat_end then mat_end else start in
+              ({ scopes = add_scopes scopes [ default ]; ending } :: tokens, [])
+            | (ending, scopes) :: stack' as stack ->
+              if start >= ending then
+                pop start ({ scopes; ending } :: tokens) stack'
+              else ({ scopes; ending = start } :: tokens, stack)
+          in
+          let cap_start = if cap_start < start then start else cap_start in
+          let cap_end = if cap_end > mat_end then mat_end else cap_end in
+          let tokens, stack = pop cap_start tokens stack in
+          ( cap_start,
+            (cap_end, add_scopes scopes [ capture.capture_name ]) :: stack,
+            tokens ))
+      (mat_start, [], tokens) captures
   in
   let rec pop tokens = function
     | [] -> tokens
@@ -398,7 +406,7 @@ let tokenize_exn t grammar stack line =
               in
               let toks =
                 handle_captures re se.stack_prev_scopes
-                  se.stack_delim.delim_name pos end_ region
+                  se.stack_delim.delim_name pos' end_ region
                   se.stack_delim.delim_end_captures toks
               in
               let toks =
