@@ -151,33 +151,41 @@ let handle_captures re scopes default mat_start mat_end region captures tokens
       (fun (_, a, b) (_, c, d) -> compare (a, b) (d, c))
       captures
   in
-  let _, stack, tokens =
+  let _, _, stack, tokens =
     (* Do a depth-first traversal by keeping a stack of captures. *)
     List.fold_left
-      (fun (start, stack, tokens) (capture, cap_start, cap_end) ->
+      (fun (prev_idx, start, stack, tokens) (capture, cap_start, cap_end) ->
         (* If the capture mentions a lookahead, it may go past the bounds of
            its parent. Therefore, cap it inside the bounds of the match. *)
         if cap_start = -1 then
           (* Capture wasn't found, ignore *)
-          (start, stack, tokens)
+          (prev_idx, start, stack, tokens)
         else
           (* Pop while start is greater than or equal to stack top *)
-          let rec pop start tokens = function
+          (* prev_idx to enforce that indices are in increasing order *)
+          let rec pop prev_idx start tokens = function
             | [] ->
-              let ending = if start > mat_end then mat_end else start in
-              ({ scopes = add_scopes scopes [ default ]; ending } :: tokens, [])
+              let ending = if prev_idx > start then prev_idx else start in
+              ( ending,
+                { scopes = add_scopes scopes [ default ]; ending } :: tokens,
+                [] )
             | (ending, scopes) :: stack' as stack ->
               if start >= ending then
-                pop start ({ scopes; ending } :: tokens) stack'
-              else ({ scopes; ending = start } :: tokens, stack)
+                let ending = if prev_idx > ending then prev_idx else ending in
+                pop ending start ({ scopes; ending } :: tokens) stack'
+              else
+                let ending = if prev_idx > start then prev_idx else start in
+                (ending, { scopes; ending } :: tokens, stack)
           in
           let cap_start = if cap_start < start then start else cap_start in
           let cap_end = if cap_end > mat_end then mat_end else cap_end in
-          let tokens, stack = pop cap_start tokens stack in
-          ( cap_start,
+          let prev_idx, tokens, stack = pop prev_idx cap_start tokens stack in
+          ( prev_idx,
+            cap_start,
             (cap_end, add_scopes scopes [ capture.capture_name ]) :: stack,
             tokens ))
-      (mat_start, [], tokens) captures
+      (mat_start, mat_start, [], tokens)
+      captures
   in
   let rec pop tokens = function
     | [] -> tokens
