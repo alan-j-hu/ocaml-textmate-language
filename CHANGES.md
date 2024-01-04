@@ -1,3 +1,7 @@
+## 0.4.0 (January 3, 2024)
+
+- Rewrite handling of captures, previous version returned indices out of order
+
 ## 0.3.4 (March 14, 2023)
 
 - Update the test dependency `plist-xml` to version 0.5.
