@@ -28,6 +28,10 @@ and delim = {
 and rule =
   | Match of match_
   | Delim of delim
+  | Scope_patterns of {
+      scope_name : string option;
+      child_patterns : rule list;
+    }
   | Include_local of string
   | Include_scope of string
   | Include_self
@@ -41,7 +45,7 @@ type repo_item = {
 }
 
 type grammar = {
-  name : string;
+  name : string option;
   scope_name : string;
   filetypes : string list;
   patterns : rule list;
@@ -106,7 +110,10 @@ let create () =
   }
 
 let add_grammar t grammar =
-  Hashtbl.replace t.by_name (String.lowercase_ascii grammar.name) grammar;
+  (match grammar.name with
+  | Some name ->
+    Hashtbl.replace t.by_name (String.lowercase_ascii name) grammar
+  | None -> ());
   Hashtbl.replace t.by_scope_name grammar.scope_name grammar;
   List.iter
     (fun filetype -> Hashtbl.replace t.by_filetype filetype grammar)
