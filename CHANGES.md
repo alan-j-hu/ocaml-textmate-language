@@ -1,3 +1,7 @@
+## 0.5.0 (February 28, 2026)
+
+- Merge PR "Fix OCaml grammar compatibility" (#1) by @davesnx
+
 ## 0.4.0 (January 3, 2024)
 
 - Rewrite handling of captures, previous version returned indices out of order

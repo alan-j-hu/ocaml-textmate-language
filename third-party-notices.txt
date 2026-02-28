@@ -28,8 +28,6 @@ SOFTWARE.
 
 The file `test/data/csharp.tmLanguage` is taken from
 
-is taken from
-
 https://github.com/dotnet/csharp-tmLanguage/blob/7a7482ffc72a6677a87eb1ed76005593a4f7f131/grammars/csharp.tmLanguage
 
 and licensed under the following:
@@ -55,3 +53,25 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+The file `test/data/ocaml.tmLanguage.json` is taken from
+
+https://github.com/ocamllabs/vscode-ocaml-platform/blob/27e942cf4a8789ea7657fdf58e79f37fbf1c27cf/syntaxes/ocaml.json
+
+and licensed under the following:
+
+ISC License
+
+Copyright (c) 2019 OCaml Labs
+
+Permission to use, copy, modify, and/or distribute this software for any
+purpose with or without fee is hereby granted, provided that the above
+copyright notice and this permission notice appear in all copies.
+
+THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
