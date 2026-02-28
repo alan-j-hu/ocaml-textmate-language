@@ -116,7 +116,16 @@ and patterns_of_plist obj =
             | _ -> false);
           delim_kind;
         }
-    | _, _ -> error "Pattern must be match, begin/end, or begin/while.")
+    | None, None ->
+      (* Pattern with neither match nor begin acts as a scope wrapper *)
+      let scope_name = Option.map get_string (List.assoc_opt "name" obj) in
+      let child_patterns =
+        match List.assoc_opt "patterns" obj with
+        | None -> []
+        | Some v -> get_pattern_list v
+      in
+      Scope_patterns { scope_name; child_patterns }
+    | Some _, Some _ -> error "Pattern must not have both match and begin.")
 
 let of_doc_exn (plist : union) =
   let rec get_repo_item obj =
@@ -142,7 +151,7 @@ let of_doc_exn (plist : union) =
   in
   let obj = get_dict plist in
   {
-    name = get_string (find_exn "name" obj);
+    name = Option.map get_string (List.assoc_opt "name" obj);
     scope_name = get_string (find_exn "scopeName" obj);
     filetypes =
       (match List.assoc_opt "fileTypes" obj with

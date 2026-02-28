@@ -296,6 +296,10 @@ let rec match_line ~t ~grammar ~stack ~pos ~toks ~line rem_pats =
                }
               :: toks),
             se :: stack )))
+    | Scope_patterns { scope_name = _; child_patterns } :: pats ->
+      (* Expand child patterns inline with fallback continuation *)
+      let k () = try_pats repos cur_grammar ~k pats in
+      try_pats repos cur_grammar child_patterns ~k
     | Include_scope name :: pats -> (
       match find_by_scope_name t name with
       | None ->
@@ -314,7 +318,7 @@ let rec match_line ~t ~grammar ~stack ~pos ~toks ~line rem_pats =
       try_pats [ cur_grammar.repository ] cur_grammar cur_grammar.patterns ~k
     | Include_local key :: pats -> (
       match find_nested key repos with
-      | None -> error ("Unknown repository key " ^ key ^ ".")
+      | None -> try_pats repos cur_grammar ~k pats
       | Some item -> (
         match item.repo_item_kind with
         | Repo_rule rule ->
