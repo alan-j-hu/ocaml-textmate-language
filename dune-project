@@ -14,7 +14,7 @@
   (plist-xml (and (>= 0.5) :with-test))
   (alcotest (and (>= 1.4) :with-test))
   (ezjsonm (and (>= 1.2) :with-test))
-  (yojson (and (>= 1.7) (< 2) :with-test)))
+  (yojson (and (>= 1.7) :with-test)))
  (synopsis "Tokenizing code with TextMate grammars for syntax highlighting")
  (tags (highlighting))
  (description "
