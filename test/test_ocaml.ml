@@ -16,7 +16,10 @@ let () =
                   (6, [ "source.ocaml" ]);
                   (7, [ "keyword.operator.ocaml"; "source.ocaml" ]);
                   (8, [ "source.ocaml" ]);
-                  (9, [ "constant.numeric.decimal.integer.ocaml"; "source.ocaml" ]);
+                  ( 9,
+                    [
+                      "constant.numeric.decimal.integer.ocaml"; "source.ocaml";
+                    ] );
                 ];
             };
           ];
