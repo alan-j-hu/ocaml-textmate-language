@@ -25,17 +25,22 @@ let compile_regex re =
   | Error msg -> error (re ^ ": " ^ msg)
   | Ok re -> re
 
-let rec get_captures kvs =
+(* Helper function for handling both dict-based capture specifications of
+   the form { "0": {"name": ..., "patterns": ...}, ... } and list-based
+   capture specifications of the form [{"name": ..., "patterns": ...}, ...] *)
+let rec get_captures_helper :
+    'a.
+    (int -> 'a -> capture_key) ->
+    (int -> 'a -> union) ->
+    'a list ->
+    (capture_key, capture) Hashtbl.t =
+ fun idx_fun capture_fun captures ->
   let tbl = Hashtbl.create 21 in
-  let rec loop = function
+  let rec loop i = function
     | [] -> ()
-    | (k, v) :: kvs ->
-      let cap =
-        match int_of_string_opt k with
-        | Some int -> Capture_idx int
-        | None -> Capture_name k
-      in
-      let v = get_dict v in
+    | capture :: captures ->
+      let k = idx_fun i capture in
+      let v = get_dict (capture_fun i capture) in
       let capture_name =
         match List.assoc_opt "name" v with
         | None -> None
@@ -46,14 +51,31 @@ let rec get_captures kvs =
         | None -> []
         | Some v -> get_pattern_list v
       in
-      Hashtbl.replace tbl cap { capture_name; capture_patterns };
-      loop kvs
+      Hashtbl.replace tbl k { capture_name; capture_patterns };
+      loop (i + 1) captures
   in
-  loop kvs;
+  loop 0 captures;
   tbl
 
 and get_pattern_list l = get_list (fun x -> patterns_of_plist (get_dict x)) l
 and get_patterns obj = find_exn "patterns" obj |> get_pattern_list
+
+and get_captures_from_dict dict =
+  get_captures_helper
+    (fun _ (k, _) ->
+      match int_of_string_opt k with
+      | Some int -> Capture_idx int
+      | None -> Capture_name k)
+    (fun _ (_, v) -> v)
+    dict
+
+and get_captures_from_list list =
+  get_captures_helper (fun i _ -> Capture_idx i) (fun _ v -> v) list
+
+and get_captures = function
+  | `Assoc d | `Dict d | `O d -> get_captures_from_dict d
+  | `A l | `Array l | `List l -> get_captures_from_list l
+  | _ -> error "Type error: Expected dict or list."
 
 and patterns_of_plist obj =
   match List.assoc_opt "include" obj with
@@ -75,7 +97,7 @@ and patterns_of_plist obj =
           captures =
             (match List.assoc_opt "captures" obj with
             | None -> Hashtbl.create 0
-            | Some value -> get_captures (get_dict value));
+            | Some value -> get_captures value);
         }
     | None, Some b ->
       let e, key, delim_kind =
@@ -87,14 +109,14 @@ and patterns_of_plist obj =
       let delim_begin_captures, delim_end_captures =
         match List.assoc_opt "captures" obj with
         | Some value ->
-          let captures = get_captures (get_dict value) in
+          let captures = get_captures value in
           (captures, captures)
         | None ->
           ( (match List.assoc_opt "beginCaptures" obj with
-            | Some value -> get_captures (get_dict value)
+            | Some value -> get_captures value
             | None -> Hashtbl.create 0),
             match List.assoc_opt key obj with
-            | Some value -> get_captures (get_dict value)
+            | Some value -> get_captures value
             | None -> Hashtbl.create 0 )
       in
       Delim
