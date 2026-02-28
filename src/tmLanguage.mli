@@ -64,12 +64,12 @@ val of_plist_exn : plist -> grammar
     the plist does not represent a valid TextMate grammar. *)
 
 val of_ezjsonm_exn : ezjsonm -> grammar
-(** Reads a TextMate grammar from a JSON file. Raises {!exception:Error} if
-    the plist does not represent a valid TextMate grammar. *)
+(** Reads a TextMate grammar from a JSON file. Raises {!exception:Error} if the
+    plist does not represent a valid TextMate grammar. *)
 
 val of_yojson_exn : yojson -> grammar
-(** Reads a TextMate grammar from a JSON file. Raises {!exception:Error} if
-    the plist does not represent a valid TextMate grammar. *)
+(** Reads a TextMate grammar from a JSON file. Raises {!exception:Error} if the
+    plist does not represent a valid TextMate grammar. *)
 
 type stack
 (** The state of the tokenizer. *)
@@ -104,7 +104,8 @@ val tokenize_exn : t -> grammar -> stack -> string -> token list * stack
 
     - [tokens] is nonempty.
     - The ending positions of [tokens] are strictly increasing.
-    - The [ending] of the last token in [tokens] is always [String.length line].
+    - The [ending] of the last token in [tokens] is always
+      [String.length line].
 
     Raises {!exception:Error} if it tries to match a malformed [end] or [while]
     regex.
