@@ -121,4 +121,21 @@ let () =
             };
           ];
         ];
+      test_tokenize_json "data/zero_width_loop.json" "source.zero-width-loop"
+        [
+          [
+            {
+              line = "a";
+              expected =
+                [
+                  ( 1,
+                    [
+                      "meta.zero.width";
+                      "meta.zero.width";
+                      "source.zero-width-loop";
+                    ] )
+                ];
+            };
+          ];
+        ];
     ]
