@@ -7,6 +7,8 @@ let scopes token = token.scopes
 
 type stack_elem = {
   stack_delim : delim;
+  stack_enter_pos : int;
+  stack_end_re : regex;
   stack_region : Oniguruma.Region.t;
   stack_begin_line : string;
   stack_grammar : grammar;
@@ -23,6 +25,15 @@ let rec add_scopes scopes = function
   | [] -> scopes
   | None :: xs -> add_scopes scopes xs
   | Some x :: xs -> add_scopes (x :: scopes) xs
+
+let has_progress start ending = ending > start
+
+let rec has_same_delim_at_pos stack delim pos =
+  match stack with
+  | [] -> false
+  | se :: rest ->
+    if se.stack_enter_pos = pos && se.stack_delim == delim then true
+    else has_same_delim_at_pos rest delim pos
 
 (* If the stack is empty, returns the main patterns associated with the
    grammar. Otherwise, returns the patterns associated with the delimiter at
@@ -52,19 +63,13 @@ let insert_capture buf line beg end_ =
 
 (* Substitute the begin pattern's captures for the backreferences in the end
    delimiter. *)
-let subst_backrefs stack_top =
-  let {
-    stack_delim = { delim_end = regex_str; delim_begin = begin_re; _ };
-    stack_begin_line = line;
-    stack_region = region;
-    _;
-  } =
-    stack_top
-  in
+let subst_backrefs delim line region =
+  let { delim_end = regex_str; delim_begin = begin_re; _ } = delim in
   let buf = Buffer.create (String.length regex_str) in
   let num_beg_captures = Oniguruma.num_captures begin_re in
+  let regex_len = String.length regex_str in
   let rec loop i escaped =
-    if i < String.length regex_str then
+    if i < regex_len then
       match (regex_str.[i], escaped) with
       | '\\', true ->
         Buffer.add_string buf "\\\\";
@@ -88,13 +93,16 @@ let subst_backrefs stack_top =
   loop 0 false;
   Buffer.contents buf
 
-let match_subst se =
+let match_subst_for delim line region =
   match
-    Oniguruma.create (subst_backrefs se) Oniguruma.Options.none
+    Oniguruma.create (subst_backrefs delim line region) Oniguruma.Options.none
       Oniguruma.Encoding.utf8 Oniguruma.Syntax.default
   with
-  | Error e -> error ("End pattern: " ^ se.stack_delim.delim_end ^ ": " ^ e)
+  | Error e -> error ("End pattern: " ^ delim.delim_end ^ ": " ^ e)
   | Ok re -> re
+
+let match_subst se =
+  match_subst_for se.stack_delim se.stack_begin_line se.stack_region
 
 let rec find_nested scope = function
   | [] -> None
@@ -193,16 +201,6 @@ let handle_captures re scopes default mat_start mat_end region captures tokens
   in
   pop tokens stack
 
-let get_whiles =
-  let rec loop acc = function
-    | [] -> acc
-    | se :: stack -> (
-      match se.delim_kind with
-      | End -> loop acc stack
-      | While -> loop acc stack)
-  in
-  loop []
-
 (* Tokenizes a line according to the grammar.
 
    [t]: The collection of grammars.
@@ -239,16 +237,18 @@ let rec match_line ~t ~grammar ~stack ~pos ~toks ~line rem_pats =
         let start = Oniguruma.Region.capture_beg region 0 in
         let end_ = Oniguruma.Region.capture_end region 0 in
         assert (start = pos);
-        let toks = { scopes; ending = pos } :: toks in
-        let toks =
-          handle_captures m.pattern scopes m.name pos end_ region m.captures
-            toks
-        in
-        let toks =
-          { scopes = add_scopes scopes [ m.name ]; ending = end_ } :: toks
-        in
-        match_line ~t ~grammar ~stack ~pos:end_ ~toks ~line
-          (next_pats grammar stack))
+        if not (has_progress pos end_) then try_pats repos cur_grammar ~k pats
+        else
+          let toks = { scopes; ending = pos } :: toks in
+          let toks =
+            handle_captures m.pattern scopes m.name pos end_ region m.captures
+              toks
+          in
+          let toks =
+            { scopes = add_scopes scopes [ m.name ]; ending = end_ } :: toks
+          in
+          match_line ~t ~grammar ~stack ~pos:end_ ~toks ~line
+            (next_pats grammar stack))
     | Delim d :: pats -> (
       (* Try to match the delimiter's begin pattern *)
       let match_result =
@@ -260,42 +260,49 @@ let rec match_line ~t ~grammar ~stack ~pos ~toks ~line rem_pats =
         let start = Oniguruma.Region.capture_beg region 0 in
         let end_ = Oniguruma.Region.capture_end region 0 in
         assert (start = pos);
-        let toks = { scopes; ending = pos } :: toks in
-        let toks =
-          handle_captures d.delim_begin scopes d.delim_name pos end_ region
-            d.delim_begin_captures toks
-        in
-        let toks =
-          { scopes = add_scopes scopes [ d.delim_name ]; ending = end_ }
-          :: toks
-        in
-        let se =
-          {
-            stack_delim = d;
-            stack_region = region;
-            stack_begin_line = line;
-            stack_repos = repos;
-            stack_grammar = cur_grammar;
-            stack_scopes =
-              add_scopes scopes [ d.delim_name; d.delim_content_name ];
-            stack_prev_scopes = scopes;
-          }
-        in
-        match d.delim_kind with
-        | End ->
-          (* Push the delimiter on the stack and continue *)
-          match_line ~t ~grammar ~stack:(se :: stack) ~pos:end_ ~toks ~line
-            d.delim_patterns
-        | While ->
-          (* Subsume the remainder of the line into a span *)
-          ( remove_empties
-              ({
-                 scopes =
-                   add_scopes scopes [ d.delim_name; d.delim_content_name ];
-                 ending = len;
-               }
-              :: toks),
-            se :: stack )))
+        let has_advanced = has_progress pos end_ in
+        if (not has_advanced) && has_same_delim_at_pos stack d pos then
+          match_line ~t ~grammar ~stack ~pos:(pos + 1) ~toks ~line
+            (next_pats grammar stack)
+        else
+          let toks = { scopes; ending = pos } :: toks in
+          let toks =
+            handle_captures d.delim_begin scopes d.delim_name pos end_ region
+              d.delim_begin_captures toks
+          in
+          let toks =
+            { scopes = add_scopes scopes [ d.delim_name ]; ending = end_ }
+            :: toks
+          in
+          let se =
+            {
+              stack_delim = d;
+              stack_enter_pos = pos;
+              stack_end_re = match_subst_for d line region;
+              stack_region = region;
+              stack_begin_line = line;
+              stack_repos = repos;
+              stack_grammar = cur_grammar;
+              stack_scopes =
+                add_scopes scopes [ d.delim_name; d.delim_content_name ];
+              stack_prev_scopes = scopes;
+            }
+          in
+          match d.delim_kind with
+          | End ->
+            (* Push the delimiter on the stack and continue *)
+            match_line ~t ~grammar ~stack:(se :: stack) ~pos:end_ ~toks ~line
+              d.delim_patterns
+          | While ->
+            (* Subsume the remainder of the line into a span *)
+            ( remove_empties
+                ({
+                   scopes =
+                     add_scopes scopes [ d.delim_name; d.delim_content_name ];
+                   ending = len;
+                 }
+                :: toks),
+              se :: stack )))
     | Scope_patterns { scope_name = _; child_patterns } :: pats ->
       (* Expand child patterns inline with fallback continuation *)
       let k () = try_pats repos cur_grammar ~k pats in
@@ -331,7 +338,7 @@ let rec match_line ~t ~grammar ~stack ~pos ~toks ~line rem_pats =
     (* Try to match the delimiter's end pattern *)
     let delim = stack_top.stack_delim in
     let end_match =
-      let re = match_subst stack_top in
+      let re = stack_top.stack_end_re in
       match Oniguruma.match_ re line pos Oniguruma.Options.none with
       | None -> None
       | Some region ->
@@ -356,13 +363,18 @@ let rec match_line ~t ~grammar ~stack ~pos ~toks ~line rem_pats =
     match (delim.delim_kind, end_match) with
     | End, None -> k ()
     | End, Some (end_, toks) ->
-      let toks =
-        { scopes = add_scopes scopes [ delim.delim_name ]; ending = end_ }
-        :: toks
-      in
-      (* Pop the delimiter off the stack and continue *)
-      match_line ~t ~grammar ~stack:stack' ~pos:end_ ~toks ~line
-        (next_pats grammar stack')
+      if (not (has_progress pos end_)) && stack_top.stack_enter_pos = pos then
+        (* Zero-width end at its enter point: pop and force progress. *)
+        match_line ~t ~grammar ~stack:stack' ~pos:(pos + 1) ~toks ~line
+          (next_pats grammar stack')
+      else
+        let toks =
+          { scopes = add_scopes scopes [ delim.delim_name ]; ending = end_ }
+          :: toks
+        in
+        (* Pop the delimiter off the stack and continue *)
+        match_line ~t ~grammar ~stack:stack' ~pos:end_ ~toks ~line
+          (next_pats grammar stack')
     | While, _ -> error "Unreachable"
   in
   if pos > len then
@@ -403,34 +415,36 @@ let tokenize_exn t grammar stack line =
       match se.stack_delim.delim_kind with
       | End -> try_while_rules pos toks (se :: rem_stack) stack
       | While ->
+        let re = se.stack_end_re in
         let rec loop pos' =
           if pos' = String.length line then (toks, pos, rem_stack)
           else
-            let re = match_subst se in
             match Oniguruma.match_ re line pos' Oniguruma.Options.none with
             | None -> loop (pos' + 1)
             | Some region ->
               let start = Oniguruma.Region.capture_beg region 0 in
               let end_ = Oniguruma.Region.capture_end region 0 in
               assert (start = pos');
-              let toks =
-                { scopes = se.stack_prev_scopes; ending = pos' } :: toks
-              in
-              let toks =
-                handle_captures re se.stack_prev_scopes
-                  se.stack_delim.delim_name pos' end_ region
-                  se.stack_delim.delim_end_captures toks
-              in
-              let toks =
-                {
-                  scopes =
-                    add_scopes se.stack_prev_scopes
-                      [ se.stack_delim.delim_name ];
-                  ending = end_;
-                }
-                :: toks
-              in
-              try_while_rules end_ toks (se :: rem_stack) stack
+              if not (has_progress pos' end_) then loop (pos' + 1)
+              else
+                let toks =
+                  { scopes = se.stack_prev_scopes; ending = pos' } :: toks
+                in
+                let toks =
+                  handle_captures re se.stack_prev_scopes
+                    se.stack_delim.delim_name pos' end_ region
+                    se.stack_delim.delim_end_captures toks
+                in
+                let toks =
+                  {
+                    scopes =
+                      add_scopes se.stack_prev_scopes
+                        [ se.stack_delim.delim_name ];
+                    ending = end_;
+                  }
+                  :: toks
+                in
+                try_while_rules end_ toks (se :: rem_stack) stack
         in
         loop pos)
   in

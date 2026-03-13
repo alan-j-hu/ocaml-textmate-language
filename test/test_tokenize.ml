@@ -1,5 +1,7 @@
 open Util
 
+let one_token line scopes = [ { line; expected = [ (1, scopes) ] } ]
+
 let () =
   Alcotest.run "Highlighting"
     [
@@ -122,20 +124,22 @@ let () =
           ];
         ];
       test_tokenize_json "data/zero_width_loop.json" "source.zero-width-loop"
+        [ one_token "a" [ "source.zero-width-loop" ] ];
+      test_tokenize_json "data/zero_width_end_loop.json"
+        "source.zero-width-end-loop"
         [
           [
             {
               line = "a";
-              expected =
-                [
-                  ( 1,
-                    [
-                      "meta.zero.width";
-                      "meta.zero.width";
-                      "source.zero-width-loop";
-                    ] )
-                ];
+              expected = [ (1, [ "source.zero-width-end-loop" ]) ];
+            };
+            {
+              line = "z";
+              expected = [ (1, [ "source.zero-width-end-loop" ]) ];
             };
           ];
         ];
+      test_tokenize_json "data/zero_width_match_loop.json"
+        "source.zero-width-match-loop"
+        [ one_token "a" [ "source.zero-width-match-loop" ] ];
     ]

@@ -1,6 +1,6 @@
 {
-  "name": "zero-width-loop",
-  "scopeName": "source.zero-width-loop",
+  "name": "zero-width-end-loop",
+  "scopeName": "source.zero-width-end-loop",
   "patterns": [
     { "include": "#expr" }
   ],
@@ -10,7 +10,6 @@
         {
           "begin": "(?=a)",
           "end": "(?=a)",
-          "applyEndPatternLast": true,
           "name": "meta.zero.width"
         }
       ]
