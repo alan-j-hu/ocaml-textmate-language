@@ -163,18 +163,23 @@ let handle_captures re scopes default mat_start mat_end region captures tokens
         else
           let beg = Oniguruma.Region.capture_beg region idx in
           let end_ = Oniguruma.Region.capture_end region idx in
-          Some (capture, beg, end_))
+          Some (idx, capture, beg, end_))
       captures
   in
   let captures =
     List.stable_sort
-      (fun (_, a, b) (_, c, d) -> compare (a, b) (d, c))
+      (fun (idx1, _, start1, end1) (idx2, _, start2, end2) ->
+        let by_start = compare start1 start2 in
+        if by_start <> 0 then by_start
+        else
+          let by_end = compare end2 end1 in
+          if by_end <> 0 then by_end else compare idx1 idx2)
       captures
   in
   let _, _, stack, tokens =
     (* Do a depth-first traversal by keeping a stack of captures. *)
     List.fold_left
-      (fun (prev_idx, start, stack, tokens) (capture, cap_start, cap_end) ->
+      (fun (prev_idx, start, stack, tokens) (_, capture, cap_start, cap_end) ->
         (* If the capture mentions a lookahead, it may go past the bounds of
            its parent. Therefore, cap it inside the bounds of the match. *)
         if cap_start = -1 then
