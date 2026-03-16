@@ -4,6 +4,8 @@
   `match`, `while`, and `begin`/`end` transitions.
 - Add regression tests for zero-width begin/end and zero-width match loop
   grammars.
+- Make overlap capture handling deterministic by sorting equal-range captures by
+  capture index, fixing missing opening quote string scopes in some grammars.
 - Behavior change: zero-width rules that do not consume input are treated as
   non-progress and skipped/advanced for safety, so they no longer emit tokens.
 

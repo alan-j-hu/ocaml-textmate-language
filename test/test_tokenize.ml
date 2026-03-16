@@ -54,6 +54,65 @@ let check_end_pattern_g_anchor () =
   Alcotest.(check bool)
     "dash token should be outside quoted string and matched as a word" true ok
 
+let check_overlapping_begin_captures_opening_quote () =
+  let grammar_json =
+    Yojson.Basic.from_string
+      {|{
+  "scopeName": "source.overlap",
+  "name": "overlap",
+  "patterns": [
+    {
+      "begin": "((\"))",
+      "end": "\"",
+      "beginCaptures": {
+        "1": {},
+        "2": {
+          "name": "string.quoted.double.test"
+        }
+      },
+      "endCaptures": {
+        "0": {
+          "name": "string.quoted.double.test"
+        }
+      },
+      "name": "meta.wrapper.test",
+      "contentName": "string.quoted.double.test"
+    }
+  ]
+}|}
+  in
+  let grammar = TmLanguage.of_yojson_exn grammar_json in
+  let t = TmLanguage.create () in
+  TmLanguage.add_grammar t grammar;
+  let line = "\"x\"" in
+  let toks, _ = TmLanguage.tokenize_exn t grammar TmLanguage.empty line in
+  let spans =
+    let rec build start = function
+      | [] -> []
+      | tok :: rest ->
+        let ending = TmLanguage.ending tok in
+        let text = String.sub line start (ending - start) in
+        (text, TmLanguage.scopes tok) :: build ending rest
+    in
+    build 0 toks
+  in
+  let quote_scopes =
+    List.fold_left
+      (fun acc (text, scopes) -> if text = "\"" then scopes :: acc else acc)
+      [] spans
+    |> List.rev
+  in
+  let has_scope scope scopes = List.exists (( = ) scope) scopes in
+  let ok =
+    match quote_scopes with
+    | [ opening; closing ] ->
+      has_scope "string.quoted.double.test" opening
+      && has_scope "string.quoted.double.test" closing
+    | _ -> false
+  in
+  Alcotest.(check bool)
+    "opening and closing quotes should both be string-scoped" true ok
+
 let () =
   Alcotest.run "Highlighting"
     [
@@ -192,5 +251,10 @@ let () =
         [
           Alcotest.test_case "Closes quoted scope after begin anchor" `Quick
             check_end_pattern_g_anchor;
+        ] );
+      ( "overlapping-begin-captures",
+        [
+          Alcotest.test_case "Keeps string scope on opening quote" `Quick
+            check_overlapping_begin_captures_opening_quote;
         ] );
     ]
