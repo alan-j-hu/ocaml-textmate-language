@@ -2,11 +2,30 @@ open Util
 
 let one_token line scopes = [ { line; expected = [ (1, scopes) ] } ]
 let line_token line scopes = { line; expected = [ (1, scopes) ] }
+let has_scope scope = List.exists (( = ) scope)
+
+let spans_of_tokens line toks =
+  let rec build start = function
+    | [] -> []
+    | tok :: rest ->
+      let ending = TmLanguage.ending tok in
+      let text = String.sub line start (ending - start) in
+      (text, TmLanguage.scopes tok) :: build ending rest
+  in
+  build 0 toks
+
+let tokenize_spans_from_json grammar_json line =
+  let grammar =
+    TmLanguage.of_yojson_exn (Yojson.Basic.from_string grammar_json)
+  in
+  let t = TmLanguage.create () in
+  TmLanguage.add_grammar t grammar;
+  let toks, _ = TmLanguage.tokenize_exn t grammar TmLanguage.empty line in
+  spans_of_tokens line toks
 
 let check_overlapping_begin_captures_opening_quote () =
   let grammar_json =
-    Yojson.Basic.from_string
-      {|{
+    {|{
   "scopeName": "source.overlap",
   "name": "overlap",
   "patterns": [
@@ -30,37 +49,21 @@ let check_overlapping_begin_captures_opening_quote () =
   ]
 }|}
   in
-  let grammar = TmLanguage.of_yojson_exn grammar_json in
-  let t = TmLanguage.create () in
-  TmLanguage.add_grammar t grammar;
   let line = "\"x\"" in
-  let toks, _ = TmLanguage.tokenize_exn t grammar TmLanguage.empty line in
-  let spans =
-    let rec build start = function
-      | [] -> []
-      | tok :: rest ->
-        let ending = TmLanguage.ending tok in
-        let text = String.sub line start (ending - start) in
-        (text, TmLanguage.scopes tok) :: build ending rest
-    in
-    build 0 toks
-  in
+  let spans = tokenize_spans_from_json grammar_json line in
   let quote_scopes =
     List.fold_left
       (fun acc (text, scopes) -> if text = "\"" then scopes :: acc else acc)
       [] spans
     |> List.rev
   in
-  let has_scope scope scopes = List.exists (( = ) scope) scopes in
-  let ok =
-    match quote_scopes with
+  Alcotest.(check bool)
+    "opening and closing quotes should both be string-scoped" true
+    (match quote_scopes with
     | [ opening; closing ] ->
       has_scope "string.quoted.double.test" opening
       && has_scope "string.quoted.double.test" closing
-    | _ -> false
-  in
-  Alcotest.(check bool)
-    "opening and closing quotes should both be string-scoped" true ok
+    | _ -> false)
 
 let () =
   Alcotest.run "Highlighting"
