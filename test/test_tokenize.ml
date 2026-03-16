@@ -3,6 +3,58 @@ open Util
 let one_token line scopes = [ { line; expected = [ (1, scopes) ] } ]
 let line_token line scopes = { line; expected = [ (1, scopes) ] }
 
+let check_end_pattern_g_anchor () =
+  let grammar_json =
+    Yojson.Basic.from_string
+      {|{
+  "scopeName": "source.ganchor",
+  "name": "ganchor",
+  "patterns": [
+    {
+      "begin": "\"",
+      "end": "(?<!\\G)\"",
+      "name": "string.quoted.test"
+    },
+    {
+      "match": "[a-zA-Z-]+",
+      "name": "word.test"
+    }
+  ]
+}|}
+  in
+  let grammar = TmLanguage.of_yojson_exn grammar_json in
+  let t = TmLanguage.create () in
+  TmLanguage.add_grammar t grammar;
+  let line = "cmd \"x\" -y" in
+  let toks, _ = TmLanguage.tokenize_exn t grammar TmLanguage.empty line in
+  let spans =
+    let rec build start = function
+      | [] -> []
+      | tok :: rest ->
+        let ending = TmLanguage.ending tok in
+        let text = String.sub line start (ending - start) in
+        (text, TmLanguage.scopes tok) :: build ending rest
+    in
+    build 0 toks
+  in
+  let dash_scopes =
+    List.find_map
+      (fun (text, scopes) ->
+        if String.contains text '-' then Some scopes else None)
+      spans
+  in
+  let has_string_scope scopes =
+    List.exists (( = ) "string.quoted.test") scopes
+  in
+  let has_word_scope scopes = List.exists (( = ) "word.test") scopes in
+  let ok =
+    match dash_scopes with
+    | None -> false
+    | Some scopes -> has_word_scope scopes && not (has_string_scope scopes)
+  in
+  Alcotest.(check bool)
+    "dash token should be outside quoted string and matched as a word" true ok
+
 let () =
   Alcotest.run "Highlighting"
     [
@@ -137,4 +189,9 @@ let () =
       test_tokenize_json "data/zero_width_match_loop.json"
         "source.zero-width-match-loop"
         [ one_token "a" [ "source.zero-width-match-loop" ] ];
+      ( "g-anchor-end-pattern",
+        [
+          Alcotest.test_case "Closes quoted scope after begin anchor" `Quick
+            check_end_pattern_g_anchor;
+        ] );
     ]

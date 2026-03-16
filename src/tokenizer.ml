@@ -8,7 +8,9 @@ let scopes token = token.scopes
 type stack_elem = {
   stack_delim : delim;
   stack_enter_pos : int;
+  stack_end_anchor_pos : int;
   stack_end_re : regex;
+  stack_end_re_parent_anchor : regex option;
   stack_grammar : grammar;
   stack_repos : (string, repo_item) Hashtbl.t list;
   stack_scopes : string list;
@@ -23,6 +25,9 @@ let rec add_scopes scopes = function
   | [] -> scopes
   | None :: xs -> add_scopes scopes xs
   | Some x :: xs -> add_scopes (x :: scopes) xs
+
+let shift_tokens offset toks =
+  List.map (fun tok -> { tok with ending = tok.ending + offset }) toks
 
 let has_progress start ending = ending > start
 
@@ -107,14 +112,46 @@ let subst_backrefs delim line region =
   loop 0 false;
   Buffer.contents buf
 
-let match_subst_for delim line region =
+let rec regex_uses_g_anchor regex i =
+  if i + 1 >= String.length regex then false
+  else if regex.[i] = '\\' then
+    if regex.[i + 1] = 'G' then true else regex_uses_g_anchor regex (i + 2)
+  else regex_uses_g_anchor regex (i + 1)
+
+let rewrite_g_anchor_to_absolute regex =
+  let buf = Buffer.create (String.length regex) in
+  let rec loop i =
+    if i >= String.length regex then ()
+    else if i + 1 < String.length regex && regex.[i] = '\\' then (
+      if regex.[i + 1] = 'G' then Buffer.add_string buf "\\A"
+      else (
+        Buffer.add_char buf regex.[i];
+        Buffer.add_char buf regex.[i + 1]);
+      loop (i + 2))
+    else (
+      Buffer.add_char buf regex.[i];
+      loop (i + 1))
+  in
+  loop 0;
+  Buffer.contents buf
+
+let compile_regex pattern delim =
   match
-    Oniguruma.create
-      (subst_backrefs delim line region)
-      Oniguruma.Options.none Oniguruma.Encoding.utf8 Oniguruma.Syntax.default
+    Oniguruma.create pattern Oniguruma.Options.none Oniguruma.Encoding.utf8
+      Oniguruma.Syntax.default
   with
   | Error e -> error ("End pattern: " ^ delim.delim_end ^ ": " ^ e)
   | Ok re -> re
+
+let match_subst_for delim line region =
+  let pattern = subst_backrefs delim line region in
+  let re = compile_regex pattern delim in
+  let re_parent_anchor =
+    if regex_uses_g_anchor pattern 0 then
+      Some (compile_regex (rewrite_g_anchor_to_absolute pattern) delim)
+    else None
+  in
+  (re, re_parent_anchor)
 
 let rec find_nested scope = function
   | [] -> None
@@ -271,10 +308,15 @@ let rec match_line ~t ~grammar ~stack ~pos ~toks ~line rem_pats =
           :: toks
         in
         let se =
+          let stack_end_re, stack_end_re_parent_anchor =
+            match_subst_for d line region
+          in
           {
             stack_delim = d;
             stack_enter_pos = pos;
-            stack_end_re = match_subst_for d line region;
+            stack_end_anchor_pos = end_;
+            stack_end_re;
+            stack_end_re_parent_anchor;
             stack_repos = repos;
             stack_grammar = cur_grammar;
             stack_scopes =
@@ -331,8 +373,23 @@ let rec match_line ~t ~grammar ~stack ~pos ~toks ~line rem_pats =
   let try_delim stack_top stack' ~k =
     (* Try to match the delimiter's end pattern *)
     let delim = stack_top.stack_delim in
-    let re = stack_top.stack_end_re in
-    let emit_close_tokens region end_ =
+    let match_end () =
+      match stack_top.stack_end_re_parent_anchor with
+      | None ->
+        let re = stack_top.stack_end_re in
+        let offset = 0 in
+        let line_for_match = line in
+        (re, offset, line_for_match)
+      | Some re ->
+        let offset = stack_top.stack_end_anchor_pos in
+        if offset >= String.length line then (stack_top.stack_end_re, 0, line)
+        else
+          let line_for_match =
+            String.sub line offset (String.length line - offset)
+          in
+          (re, offset, line_for_match)
+    in
+    let emit_close_tokens re offset region end_ =
       let toks =
         {
           scopes =
@@ -342,15 +399,38 @@ let rec match_line ~t ~grammar ~stack ~pos ~toks ~line rem_pats =
         }
         :: toks
       in
-      handle_captures re stack_top.stack_prev_scopes delim.delim_name pos end_
-        region delim.delim_end_captures toks
+      if offset = 0 then
+        handle_captures re stack_top.stack_prev_scopes delim.delim_name pos
+          end_ region delim.delim_end_captures toks
+      else
+        let toks = shift_tokens (-offset) toks in
+        let toks =
+          handle_captures re stack_top.stack_prev_scopes delim.delim_name
+            (pos - offset) (end_ - offset) region delim.delim_end_captures toks
+        in
+        shift_tokens offset toks
     in
-    match
-      (delim.delim_kind, match_regex re line pos Oniguruma.Options.none)
-    with
-    | End, No_match -> k ()
-    | End, Empty_match { region; end_ } ->
-      let toks = emit_close_tokens region end_ in
+    let end_match =
+      let re, offset, line_for_match = match_end () in
+      let pos_for_match = pos - offset in
+      if pos_for_match < 0 then None
+      else
+        match
+          match_regex re line_for_match pos_for_match Oniguruma.Options.none
+        with
+        | No_match -> None
+        | Empty_match { region; end_ } ->
+          let end_ = end_ + offset in
+          let toks = emit_close_tokens re offset region end_ in
+          Some (`Empty, end_, toks)
+        | Nonempty_match { region; end_ } ->
+          let end_ = end_ + offset in
+          let toks = emit_close_tokens re offset region end_ in
+          Some (`Nonempty, end_, toks)
+    in
+    match (delim.delim_kind, end_match) with
+    | End, None -> k ()
+    | End, Some (`Empty, end_, toks) ->
       if stack_top.stack_enter_pos = pos then
         (* Zero-width end at its enter point: pop and force progress. *)
         match_line ~t ~grammar ~stack:stack' ~pos:(pos + 1) ~toks ~line
@@ -363,8 +443,7 @@ let rec match_line ~t ~grammar ~stack ~pos ~toks ~line rem_pats =
         (* Pop the delimiter off the stack and continue *)
         match_line ~t ~grammar ~stack:stack' ~pos:end_ ~toks ~line
           (next_pats grammar stack')
-    | End, Nonempty_match { region; end_ } ->
-      let toks = emit_close_tokens region end_ in
+    | End, Some (`Nonempty, end_, toks) ->
       let toks =
         { scopes = add_scopes scopes [ delim.delim_name ]; ending = end_ }
         :: toks
