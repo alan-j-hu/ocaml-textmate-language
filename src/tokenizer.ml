@@ -26,9 +26,6 @@ let rec add_scopes scopes = function
   | None :: xs -> add_scopes scopes xs
   | Some x :: xs -> add_scopes (x :: scopes) xs
 
-let shift_tokens offset toks =
-  List.map (fun tok -> { tok with ending = tok.ending + offset }) toks
-
 let has_progress start ending = ending > start
 
 type matched_region = { region : Oniguruma.Region.t; end_ : int }
@@ -112,28 +109,34 @@ let subst_backrefs delim line region =
   loop 0 false;
   Buffer.contents buf
 
-let rec regex_uses_g_anchor regex i =
-  if i + 1 >= String.length regex then false
-  else if regex.[i] = '\\' then
-    if regex.[i + 1] = 'G' then true else regex_uses_g_anchor regex (i + 2)
-  else regex_uses_g_anchor regex (i + 1)
-
-let rewrite_g_anchor_to_absolute regex =
-  let buf = Buffer.create (String.length regex) in
-  let rec loop i =
-    if i >= String.length regex then ()
-    else if i + 1 < String.length regex && regex.[i] = '\\' then (
-      if regex.[i + 1] = 'G' then Buffer.add_string buf "\\A"
-      else (
-        Buffer.add_char buf regex.[i];
-        Buffer.add_char buf regex.[i + 1]);
-      loop (i + 2))
-    else (
-      Buffer.add_char buf regex.[i];
-      loop (i + 1))
+let rewrite_g_anchor_to_absolute_opt regex =
+  let len = String.length regex in
+  let buf = Buffer.create len in
+  let rec loop i in_char_class saw_g_anchor =
+    if i >= len then if saw_g_anchor then Some (Buffer.contents buf) else None
+    else
+      let ch = regex.[i] in
+      if ch = '\\' then
+        if i + 1 >= len then (
+          Buffer.add_char buf '\\';
+          if saw_g_anchor then Some (Buffer.contents buf) else None)
+        else
+          let next = regex.[i + 1] in
+          if (not in_char_class) && next = 'G' then (
+            Buffer.add_string buf "\\A";
+            loop (i + 2) in_char_class true)
+          else (
+            Buffer.add_char buf '\\';
+            Buffer.add_char buf next;
+            loop (i + 2) in_char_class saw_g_anchor)
+      else
+        let in_char_class =
+          if ch = '[' then true else if ch = ']' then false else in_char_class
+        in
+        Buffer.add_char buf ch;
+        loop (i + 1) in_char_class saw_g_anchor
   in
-  loop 0;
-  Buffer.contents buf
+  loop 0 false false
 
 let compile_regex pattern delim =
   match
@@ -147,9 +150,9 @@ let match_subst_for delim line region =
   let pattern = subst_backrefs delim line region in
   let re = compile_regex pattern delim in
   let re_parent_anchor =
-    if regex_uses_g_anchor pattern 0 then
-      Some (compile_regex (rewrite_g_anchor_to_absolute pattern) delim)
-    else None
+    match rewrite_g_anchor_to_absolute_opt pattern with
+    | Some rewritten -> Some (compile_regex rewritten delim)
+    | None -> None
   in
   (re, re_parent_anchor)
 
@@ -175,8 +178,8 @@ let remove_empties =
   go []
 
 (* Emit tokens for the match region's captures. *)
-let handle_captures re scopes default mat_start mat_end region captures tokens
-    =
+let handle_captures ?(region_offset = 0) re scopes default mat_start mat_end
+    region captures tokens =
   let captures =
     Array.concat
       (Hashtbl.fold
@@ -200,7 +203,7 @@ let handle_captures re scopes default mat_start mat_end region captures tokens
         else
           let beg = Oniguruma.Region.capture_beg region idx in
           let end_ = Oniguruma.Region.capture_end region idx in
-          Some (capture, beg, end_))
+          Some (capture, beg + region_offset, end_ + region_offset))
       captures
   in
   let captures =
@@ -378,8 +381,7 @@ let rec match_line ~t ~grammar ~stack ~pos ~toks ~line rem_pats =
       | None ->
         let re = stack_top.stack_end_re in
         let offset = 0 in
-        let line_for_match = line in
-        (re, offset, line_for_match)
+        (re, offset, line)
       | Some re ->
         let offset = stack_top.stack_end_anchor_pos in
         if offset >= String.length line then (stack_top.stack_end_re, 0, line)
@@ -399,16 +401,8 @@ let rec match_line ~t ~grammar ~stack ~pos ~toks ~line rem_pats =
         }
         :: toks
       in
-      if offset = 0 then
-        handle_captures re stack_top.stack_prev_scopes delim.delim_name pos
-          end_ region delim.delim_end_captures toks
-      else
-        let toks = shift_tokens (-offset) toks in
-        let toks =
-          handle_captures re stack_top.stack_prev_scopes delim.delim_name
-            (pos - offset) (end_ - offset) region delim.delim_end_captures toks
-        in
-        shift_tokens offset toks
+      handle_captures ~region_offset:offset re stack_top.stack_prev_scopes
+        delim.delim_name pos end_ region delim.delim_end_captures toks
     in
     let end_match =
       let re, offset, line_for_match = match_end () in

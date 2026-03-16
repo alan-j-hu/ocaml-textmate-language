@@ -43,14 +43,13 @@ let check_end_pattern_g_anchor () =
         if String.contains text '-' then Some scopes else None)
       spans
   in
-  let has_string_scope scopes =
-    List.exists (( = ) "string.quoted.test") scopes
-  in
-  let has_word_scope scopes = List.exists (( = ) "word.test") scopes in
+  let has_scope scope scopes = List.exists (( = ) scope) scopes in
   let ok =
     match dash_scopes with
     | None -> false
-    | Some scopes -> has_word_scope scopes && not (has_string_scope scopes)
+    | Some scopes ->
+      has_scope "word.test" scopes
+      && not (has_scope "string.quoted.test" scopes)
   in
   Alcotest.(check bool)
     "dash token should be outside quoted string and matched as a word" true ok
