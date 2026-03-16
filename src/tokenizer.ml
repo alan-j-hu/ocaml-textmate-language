@@ -9,8 +9,6 @@ type stack_elem = {
   stack_delim : delim;
   stack_enter_pos : int;
   stack_end_re : regex;
-  stack_region : Oniguruma.Region.t;
-  stack_begin_line : string;
   stack_grammar : grammar;
   stack_repos : (string, repo_item) Hashtbl.t list;
   stack_scopes : string list;
@@ -28,12 +26,10 @@ let rec add_scopes scopes = function
 
 let has_progress start ending = ending > start
 
-let rec has_same_delim_at_pos stack delim pos =
-  match stack with
-  | [] -> false
-  | se :: rest ->
-    if se.stack_enter_pos = pos && se.stack_delim == delim then true
-    else has_same_delim_at_pos rest delim pos
+let has_same_delim_at_pos stack delim pos =
+  List.exists
+    (fun se -> se.stack_enter_pos = pos && se.stack_delim == delim)
+    stack
 
 (* If the stack is empty, returns the main patterns associated with the
    grammar. Otherwise, returns the patterns associated with the delimiter at
@@ -101,9 +97,6 @@ let match_subst_for delim line region =
   with
   | Error e -> error ("End pattern: " ^ delim.delim_end ^ ": " ^ e)
   | Ok re -> re
-
-let match_subst se =
-  match_subst_for se.stack_delim se.stack_begin_line se.stack_region
 
 let rec find_nested scope = function
   | [] -> None
@@ -280,8 +273,6 @@ let rec match_line ~t ~grammar ~stack ~pos ~toks ~line rem_pats =
               stack_delim = d;
               stack_enter_pos = pos;
               stack_end_re = match_subst_for d line region;
-              stack_region = region;
-              stack_begin_line = line;
               stack_repos = repos;
               stack_grammar = cur_grammar;
               stack_scopes =
