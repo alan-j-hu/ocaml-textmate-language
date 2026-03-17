@@ -1,0 +1,19 @@
+{
+  "name": "zero-width-loop",
+  "scopeName": "source.zero-width-loop",
+  "patterns": [
+    { "include": "#expr" }
+  ],
+  "repository": {
+    "expr": {
+      "patterns": [
+        {
+          "begin": "(?=a)",
+          "end": "(?=a)",
+          "applyEndPatternLast": true,
+          "name": "meta.zero.width"
+        }
+      ]
+    }
+  }
+}

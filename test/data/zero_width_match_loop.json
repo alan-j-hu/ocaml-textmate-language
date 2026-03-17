@@ -1,0 +1,10 @@
+{
+  "name": "zero-width-match-loop",
+  "scopeName": "source.zero-width-match-loop",
+  "patterns": [
+    {
+      "match": "(?=a)",
+      "name": "meta.zero.width.match"
+    }
+  ]
+}

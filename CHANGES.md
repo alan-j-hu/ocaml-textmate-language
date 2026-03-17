@@ -1,3 +1,12 @@
+## Unreleased
+
+- Prevent tokenizer hangs from zero-width regex loops by enforcing progress in
+  `match`, `while`, and `begin`/`end` transitions.
+- Add regression tests for zero-width begin/end and zero-width match loop
+  grammars.
+- Behavior change: zero-width rules that do not consume input are treated as
+  non-progress and skipped/advanced for safety, so they no longer emit tokens.
+
 ## 0.5.0 (February 28, 2026)
 
 - Merge PR "Fix OCaml grammar compatibility" (#1) by @davesnx
