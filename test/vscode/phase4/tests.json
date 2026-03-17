@@ -1,0 +1,190 @@
+[
+  {
+    "grammarPath": "fixtures/apply-end-pattern-last.json",
+    "lines": [
+      {
+        "line": "last",
+        "tokens": [
+          {
+            "value": "last",
+            "scopes": [
+              "source.apply-end-pattern-last",
+              "end-pattern-last-env"
+            ]
+          }
+        ]
+      },
+      {
+        "line": "{ some }excentricSyntax }",
+        "tokens": [
+          {
+            "value": "{",
+            "scopes": [
+              "source.apply-end-pattern-last",
+              "end-pattern-last-env",
+              "scope"
+            ]
+          },
+          {
+            "value": " some ",
+            "scopes": [
+              "source.apply-end-pattern-last",
+              "end-pattern-last-env",
+              "scope"
+            ]
+          },
+          {
+            "value": "}excentricSyntax",
+            "scopes": [
+              "source.apply-end-pattern-last",
+              "end-pattern-last-env",
+              "scope",
+              "excentric"
+            ]
+          },
+          {
+            "value": " ",
+            "scopes": [
+              "source.apply-end-pattern-last",
+              "end-pattern-last-env",
+              "scope"
+            ]
+          },
+          {
+            "value": "}",
+            "scopes": [
+              "source.apply-end-pattern-last",
+              "end-pattern-last-env",
+              "scope"
+            ]
+          }
+        ]
+      },
+      {
+        "line": "",
+        "tokens": [
+          {
+            "value": "",
+            "scopes": [
+              "source.apply-end-pattern-last"
+            ]
+          }
+        ]
+      },
+      {
+        "line": "first",
+        "tokens": [
+          {
+            "value": "first",
+            "scopes": [
+              "source.apply-end-pattern-last",
+              "normal-env"
+            ]
+          }
+        ]
+      },
+      {
+        "line": "{ some }excentricSyntax }",
+        "tokens": [
+          {
+            "value": "{",
+            "scopes": [
+              "source.apply-end-pattern-last",
+              "normal-env",
+              "scope"
+            ]
+          },
+          {
+            "value": " some ",
+            "scopes": [
+              "source.apply-end-pattern-last",
+              "normal-env",
+              "scope"
+            ]
+          },
+          {
+            "value": "}",
+            "scopes": [
+              "source.apply-end-pattern-last",
+              "normal-env",
+              "scope"
+            ]
+          },
+          {
+            "value": "excentricSyntax }",
+            "scopes": [
+              "source.apply-end-pattern-last",
+              "normal-env"
+            ]
+          }
+        ]
+      }
+    ],
+    "grammars": [
+      "fixtures/apply-end-pattern-last.json"
+    ],
+    "desc": "TEST #24"
+  },
+  {
+    "grammars": [
+      "fixtures/251.tmLanguage.json"
+    ],
+    "grammarPath": "fixtures/251.tmLanguage.json",
+    "desc": "Issue #251 empty `end` match immediately",
+    "lines": [
+      {
+        "line": "   comment   ",
+        "tokens": [
+          {
+            "value": "   ",
+            "scopes": [
+              "source.empty.end"
+            ]
+          },
+          {
+            "value": "comment",
+            "scopes": [
+              "source.empty.end",
+              "comment"
+            ]
+          },
+          {
+            "value": "   ",
+            "scopes": [
+              "source.empty.end",
+              "comment"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "grammars": [
+      "fixtures/239.tmLanguage.json"
+    ],
+    "grammarPath": "fixtures/239.tmLanguage.json",
+    "desc": "Issue #239 Wrong backreference escaping",
+    "lines": [
+      {
+        "line": "#a-z comment",
+        "tokens": [
+          {
+            "value": "#a-z",
+            "scopes": [
+              "source.backreference-escaping",
+              "string"
+            ]
+          },
+          {
+            "value": " comment",
+            "scopes": [
+              "source.backreference-escaping",
+              "string"
+            ]
+          }
+        ]
+      }
+    ]
+  }
+]

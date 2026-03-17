@@ -134,7 +134,7 @@ and patterns_of_plist obj =
           delim_end_captures;
           delim_apply_end_pattern_last =
             (match List.assoc_opt "applyEndPatternLast" obj with
-            | Some (`Int 1) -> true
+            | Some (`Bool true) | Some (`Int 1) -> true
             | _ -> false);
           delim_kind;
         }

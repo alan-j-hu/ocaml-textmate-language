@@ -1,0 +1,18 @@
+{
+  "scopeName": "source.python",
+  "patterns": [
+    {
+      "include": "#builtin_functions"
+    }
+  ],
+  "repository": {
+    "builtin_functions": {
+      "patterns": [
+        {
+          "match": "enumerate",
+          "name": "support.function.builtin.python"
+        }
+      ]
+    }
+  }
+}

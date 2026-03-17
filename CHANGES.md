@@ -8,6 +8,8 @@
   capture index, fixing missing opening quote string scopes in some grammars.
 - Behavior change: zero-width rules that do not consume input are treated as
   non-progress and skipped/advanced for safety, so they no longer emit tokens.
+- Implement `include: "scope#repoRule"` and capture sub-pattern tokenization
+  for `captures`/`beginCaptures`/`endCaptures` entries with `patterns`.
 
 ## 0.5.0 (February 28, 2026)
 

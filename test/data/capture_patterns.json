@@ -1,0 +1,20 @@
+{
+  "name": "capture-patterns",
+  "scopeName": "source.capture-patterns",
+  "patterns": [
+    {
+      "match": "(foo)(bar)",
+      "captures": {
+        "2": {
+          "name": "suffix.scope",
+          "patterns": [
+            {
+              "match": "bar",
+              "name": "inner.scope"
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

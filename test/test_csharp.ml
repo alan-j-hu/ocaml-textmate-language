@@ -25,8 +25,7 @@ let () =
                   (45, [ "entity.name.type.namespace.cs"; "source.cs" ]);
                   (46, [ "punctuation.accessor.cs"; "source.cs" ]);
                   (63, [ "entity.name.type.namespace.cs"; "source.cs" ]);
-                  (66, [ "source.cs" ]);
-                  (67, [ "punctuation.terminator.statement.cs"; "source.cs" ]);
+                  (67, [ "source.cs" ]);
                 ];
             };
           ];

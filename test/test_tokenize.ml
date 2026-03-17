@@ -116,9 +116,15 @@ let () =
               expected =
                 [
                   (1, [ "keyword.letter"; "source.a" ]);
-                  (2, [ "punctuation.paren.open"; "source.a" ]);
+                  ( 2,
+                    [
+                      "punctuation.paren.open"; "expression.group"; "source.a";
+                    ] );
                   (3, [ "keyword.letter"; "expression.group"; "source.a" ]);
-                  (4, [ "punctuation.paren.close"; "source.a" ]);
+                  ( 4,
+                    [
+                      "punctuation.paren.close"; "expression.group"; "source.a";
+                    ] );
                 ];
             };
           ];
@@ -128,7 +134,10 @@ let () =
               expected =
                 [
                   (1, [ "keyword.letter"; "source.a" ]);
-                  (2, [ "punctuation.paren.open"; "source.a" ]);
+                  ( 2,
+                    [
+                      "punctuation.paren.open"; "expression.group"; "source.a";
+                    ] );
                 ];
             };
             {
@@ -136,28 +145,37 @@ let () =
               expected =
                 [
                   (1, [ "keyword.letter"; "expression.group"; "source.a" ]);
-                  (2, [ "punctuation.paren.close"; "source.a" ]);
+                  ( 2,
+                    [
+                      "punctuation.paren.close"; "expression.group"; "source.a";
+                    ] );
                 ];
             };
           ];
         ];
       test_tokenize_json "data/while.json" "source.while"
         [
-          [ { line = "a"; expected = [ (1, [ "begin"; "source.while" ]) ] } ];
+          [
+            {
+              line = "a";
+              expected =
+                [ (1, [ "begin"; "expression.group"; "source.while" ]) ];
+            };
+          ];
           [
             {
               line = "ac";
               expected =
                 [
-                  (1, [ "begin"; "source.while" ]);
-                  (2, [ "expression.group"; "source.while" ]);
+                  (1, [ "begin"; "expression.group"; "source.while" ]);
+                  (2, [ "keyword.letter"; "expression.group"; "source.while" ]);
                 ];
             };
             {
               line = "bc";
               expected =
                 [
-                  (1, [ "while"; "source.while" ]);
+                  (1, [ "while"; "expression.group"; "source.while" ]);
                   (2, [ "keyword.letter"; "expression.group"; "source.while" ]);
                 ];
             };
@@ -169,31 +187,31 @@ let () =
           [
             {
               line = "X";
-              expected = [ (1, [ "xbegin"; "source.multiwhile" ]) ];
+              expected = [ (1, [ "xbegin"; "xlist"; "source.multiwhile" ]) ];
             };
             {
               line = "xY";
               expected =
                 [
-                  (1, [ "xwhile"; "source.multiwhile" ]);
-                  (2, [ "ybegin"; "xlist"; "source.multiwhile" ]);
+                  (1, [ "xwhile"; "xlist"; "source.multiwhile" ]);
+                  (2, [ "ybegin"; "ylist"; "xlist"; "source.multiwhile" ]);
                 ];
             };
             {
               line = "yxy";
               expected =
                 [
-                  (1, [ "source.multiwhile" ]);
-                  (2, [ "xwhile"; "source.multiwhile" ]);
-                  (3, [ "ywhile"; "xlist"; "source.multiwhile" ]);
+                  (1, [ "xlist"; "source.multiwhile" ]);
+                  (2, [ "xwhile"; "xlist"; "source.multiwhile" ]);
+                  (3, [ "ywhile"; "ylist"; "xlist"; "source.multiwhile" ]);
                 ];
             };
             {
               line = "xy";
               expected =
                 [
-                  (1, [ "xwhile"; "source.multiwhile" ]);
-                  (2, [ "ywhile"; "xlist"; "source.multiwhile" ]);
+                  (1, [ "xwhile"; "xlist"; "source.multiwhile" ]);
+                  (2, [ "ywhile"; "ylist"; "xlist"; "source.multiwhile" ]);
                 ];
             };
             { line = "y"; expected = [ (1, [ "source.multiwhile" ]) ] };
@@ -206,16 +224,56 @@ let () =
               line = "({#aaff59})";
               expected =
                 [
-                  (1, [ "punctuation.paren.open"; "source.groups" ]);
-                  (2, [ "punctuation.paren.open.groups"; "source.groups" ]);
+                  ( 1,
+                    [
+                      "punctuation.paren.open";
+                      "expression.group";
+                      "source.groups";
+                    ] );
+                  ( 2,
+                    [
+                      "punctuation.paren.open.groups";
+                      "expression.group";
+                      "source.groups";
+                    ] );
                   ( 3,
                     [ "keyword.operator"; "expression.group"; "source.groups" ]
                   );
                   ( 9,
-                    [ "constant.numeric"; "expression.group"; "source.groups" ]
-                  );
-                  (10, [ "punctuation.paren.close.groups"; "source.groups" ]);
-                  (11, [ "punctuation.paren.close"; "source.groups" ]);
+                    [
+                      "constant.numeric";
+                      "keyword.operator";
+                      "expression.group";
+                      "source.groups";
+                    ] );
+                  ( 10,
+                    [
+                      "punctuation.paren.close.groups";
+                      "expression.group";
+                      "source.groups";
+                    ] );
+                  ( 11,
+                    [
+                      "punctuation.paren.close";
+                      "expression.group";
+                      "source.groups";
+                    ] );
+                ];
+            };
+          ];
+        ];
+      test_tokenize_json "data/capture_patterns.json" "source.capture-patterns"
+        [
+          [
+            {
+              line = "foobar";
+              expected =
+                [
+                  (3, [ "source.capture-patterns" ]);
+                  ( 6,
+                    [
+                      "inner.scope"; "suffix.scope"; "source.capture-patterns";
+                    ] );
                 ];
             };
           ];

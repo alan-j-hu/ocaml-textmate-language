@@ -51,6 +51,16 @@ let has_same_delim_at_pos stack delim pos =
     (fun se -> se.stack_enter_pos = pos && se.stack_delim == delim)
     stack
 
+let split_scope_repo_include s =
+  match String.index_opt s '#' with
+  | None -> None
+  | Some i ->
+    if i = 0 || i = String.length s - 1 then None
+    else
+      let scope = String.sub s 0 i in
+      let key = String.sub s (i + 1) (String.length s - i - 1) in
+      Some (scope, key)
+
 (* If the stack is empty, returns the main patterns associated with the
    grammar. Otherwise, returns the patterns associated with the delimiter at
    the top of the stack. *)
@@ -58,11 +68,11 @@ let next_pats grammar = function
   | [] -> grammar.patterns
   | s :: _ -> s.stack_delim.delim_patterns
 
-(* Should the character be escaped in a regex? *)
-let is_special = function
-  | '|' | '.' | '*' | '+' | '?' | '^' | '$' | '-' | ':' | '~' | '#' | '&' | '('
-  | ')' | '[' | ']' | '{' | '}' | '<' | '>' | '\\' | '\'' ->
-    true
+let is_digit ch = ch >= '0' && ch <= '9'
+
+let is_literal_char ch =
+  match ch with
+  | 'a' .. 'z' | 'A' .. 'Z' | '0' .. '9' | '_' -> true
   | _ -> false
 
 (* Insert the substring of [line] from [beg] to [end_] into [buf]. *)
@@ -71,7 +81,7 @@ let insert_capture buf line beg end_ =
     if i = end_ then ()
     else
       let ch = line.[i] in
-      if is_special ch then Buffer.add_char buf '\\';
+      if not (is_literal_char ch) then Buffer.add_char buf '\\';
       Buffer.add_char buf ch;
       loop (i + 1)
   in
@@ -92,16 +102,24 @@ let subst_backrefs delim line region =
         loop (i + 1) false
       | '\\', false -> loop (i + 1) true
       | char, true ->
-        if char >= '0' && char <= '9' then (
-          let idx = Char.code char - Char.code '0' in
-          if idx < num_beg_captures then
+        if is_digit char then (
+          let j = ref i in
+          while !j < regex_len && is_digit regex_str.[!j] do
+            incr j
+          done;
+          let idx = int_of_string (String.sub regex_str i (!j - i)) in
+          if idx <= num_beg_captures then (
             let beg = Oniguruma.Region.capture_beg region idx in
             let end_ = Oniguruma.Region.capture_end region idx in
             if beg <> -1 then insert_capture buf line beg end_)
+          else (
+            Buffer.add_char buf '\\';
+            Buffer.add_substring buf regex_str i (!j - i));
+          loop !j false)
         else (
           Buffer.add_char buf '\\';
-          Buffer.add_char buf char);
-        loop (i + 1) false
+          Buffer.add_char buf char;
+          loop (i + 1) false)
       | char, false ->
         Buffer.add_char buf char;
         loop (i + 1) false
@@ -146,6 +164,30 @@ let compile_regex pattern delim =
   | Error e -> error ("End pattern: " ^ delim.delim_end ^ ": " ^ e)
   | Ok re -> re
 
+let select_end_match_context ~line ~anchor_pos ~default_re ~parent_anchor_re =
+  match parent_anchor_re with
+  | None -> (default_re, 0, line)
+  | Some re ->
+    if anchor_pos >= String.length line then (default_re, 0, line)
+    else
+      let line_for_match =
+        String.sub line anchor_pos (String.length line - anchor_pos)
+      in
+      (re, anchor_pos, line_for_match)
+
+let match_end_at ~re ~offset ~line_for_match ~pos =
+  let pos_for_match = pos - offset in
+  if pos_for_match < 0 then None
+  else
+    match
+      Oniguruma.match_ re line_for_match pos_for_match Oniguruma.Options.none
+    with
+    | None -> None
+    | Some region ->
+      let start = Oniguruma.Region.capture_beg region 0 + offset in
+      let end_ = Oniguruma.Region.capture_end region 0 + offset in
+      Some (region, start, end_)
+
 let match_subst_for delim line region =
   let pattern = subst_backrefs delim line region in
   let re = compile_regex pattern delim in
@@ -163,43 +205,80 @@ let rec find_nested scope = function
     | Some x -> Some x
     | None -> find_nested scope repos)
 
+let emit_delim_close_token ~base_scopes ~delim_name ~ending toks =
+  { scopes = add_scopes base_scopes [ delim_name ]; ending } :: toks
+
 (* Discard zero-length tokens. *)
 let remove_empties =
   let rec go acc = function
     | [] -> acc
+    | [ tok ] -> if tok.ending = 0 && acc <> [] then acc else tok :: acc
     | tok :: toks ->
       let prev =
         match toks with
-        | [] -> 0
+        | [] -> assert false
         | tok :: _ -> tok.ending
       in
       if tok.ending = prev then go acc toks else go (tok :: acc) toks
   in
   go []
 
-(* Emit tokens for the match region's captures. *)
-let handle_captures ?(region_offset = 0) re scopes default mat_start mat_end
-    region captures tokens =
-  let captures =
-    Array.concat
-      (Hashtbl.fold
-         (fun k capture acc ->
-           let captures =
-             match k with
-             | Capture_idx idx -> [| (idx, capture) |]
-             | Capture_name str ->
-               Array.map
-                 (fun idx -> (idx, capture))
-                 (Oniguruma.name_to_group_numbers re str)
-           in
-           captures :: acc)
-         captures [])
+let resolve_capture_name ~line ~region ~region_offset name =
+  let len = String.length name in
+  let buf = Buffer.create len in
+  let rec loop i =
+    if i >= len then ()
+    else if name.[i] = '$' then (
+      let j = ref (i + 1) in
+      while !j < len && name.[!j] >= '0' && name.[!j] <= '9' do
+        incr j
+      done;
+      if !j = i + 1 then (
+        Buffer.add_char buf '$';
+        loop (i + 1))
+      else
+        let idx = int_of_string (String.sub name (i + 1) (!j - i - 1)) in
+        if idx >= 0 && idx < Oniguruma.Region.length region then (
+          let beg = Oniguruma.Region.capture_beg region idx + region_offset in
+          let end_ = Oniguruma.Region.capture_end region idx + region_offset in
+          if beg >= 0 && end_ >= beg && end_ <= String.length line then
+            Buffer.add_substring buf line beg (end_ - beg);
+          loop !j)
+        else (
+          Buffer.add_char buf name.[i];
+          loop (i + 1)))
+    else (
+      Buffer.add_char buf name.[i];
+      loop (i + 1))
   in
-  let captures = Array.to_list captures in
+  loop 0;
+  Buffer.contents buf
+
+let merge_repos repos =
+  let merged = Hashtbl.create 31 in
+  List.iter
+    (fun repo -> Hashtbl.iter (fun k v -> Hashtbl.replace merged k v) repo)
+    (List.rev repos);
+  merged
+
+(* Emit tokens for the match region's captures. *)
+let handle_captures ?(region_offset = 0) ?tokenize_capture_patterns ~line re
+    scopes default mat_start mat_end region captures tokens =
+  let region_len = Oniguruma.Region.length region in
+  let captures =
+    Hashtbl.fold
+      (fun k capture acc ->
+        match k with
+        | Capture_idx idx -> (idx, capture) :: acc
+        | Capture_name str ->
+          let groups = Oniguruma.name_to_group_numbers re str in
+          Array.fold_right (fun idx acc -> (idx, capture) :: acc) groups acc)
+      captures []
+  in
   let captures =
     List.filter_map
       (fun (idx, capture) ->
-        if idx < 0 || idx >= Oniguruma.Region.length region then None
+        if idx < 0 || idx >= region_len then None
         else
           let beg = Oniguruma.Region.capture_beg region idx in
           let end_ = Oniguruma.Region.capture_end region idx in
@@ -216,7 +295,22 @@ let handle_captures ?(region_offset = 0) re scopes default mat_start mat_end
           if by_end <> 0 then by_end else compare idx1 idx2)
       captures
   in
-  let _, _, stack, tokens =
+  let emit_segment prev_idx tokens start_pos end_pos seg_scopes seg_patterns =
+    let end_pos = max prev_idx end_pos in
+    let start_pos = max prev_idx start_pos in
+    if start_pos >= end_pos then (end_pos, tokens)
+    else
+      match (seg_patterns, tokenize_capture_patterns) with
+      | [], _ | _, None ->
+        (end_pos, { scopes = seg_scopes; ending = end_pos } :: tokens)
+      | patterns, Some tokenize ->
+        let nested = tokenize seg_scopes patterns start_pos end_pos in
+        let tokens =
+          List.fold_left (fun acc tok -> tok :: acc) tokens nested
+        in
+        (end_pos, tokens)
+  in
+  let prev_idx, _, stack, tokens =
     (* Do a depth-first traversal by keeping a stack of captures. *)
     List.fold_left
       (fun (prev_idx, start, stack, tokens) (_, capture, cap_start, cap_end) ->
@@ -230,33 +324,64 @@ let handle_captures ?(region_offset = 0) re scopes default mat_start mat_end
           (* prev_idx to enforce that indices are in increasing order *)
           let rec pop prev_idx start tokens = function
             | [] ->
-              let ending = if prev_idx > start then prev_idx else start in
+              let ending = max prev_idx start in
               ( ending,
                 { scopes = add_scopes scopes [ default ]; ending } :: tokens,
                 [] )
-            | (ending, scopes) :: stack' as stack ->
+            | (start_pos, ending, scopes, patterns) :: stack' as stack ->
               if start >= ending then
-                let ending = if prev_idx > ending then prev_idx else ending in
-                pop ending start ({ scopes; ending } :: tokens) stack'
+                let prev_idx, tokens =
+                  emit_segment prev_idx tokens start_pos ending scopes patterns
+                in
+                pop prev_idx start tokens stack'
               else
-                let ending = if prev_idx > start then prev_idx else start in
+                let ending = max prev_idx start in
                 (ending, { scopes; ending } :: tokens, stack)
           in
-          let cap_start = if cap_start < start then start else cap_start in
-          let cap_end = if cap_end > mat_end then mat_end else cap_end in
+          let cap_start = max cap_start start in
+          let cap_end = min cap_end mat_end in
           let prev_idx, tokens, stack = pop prev_idx cap_start tokens stack in
+          let capture_name =
+            match capture.capture_name with
+            | None -> None
+            | Some name when String.contains name '$' ->
+              Some (resolve_capture_name ~line ~region ~region_offset name)
+            | Some name -> Some name
+          in
+          let capture_scopes = add_scopes scopes [ default; capture_name ] in
           ( prev_idx,
             cap_start,
-            (cap_end, add_scopes scopes [ capture.capture_name ]) :: stack,
+            (cap_start, cap_end, capture_scopes, capture.capture_patterns)
+            :: stack,
             tokens ))
       (mat_start, mat_start, [], tokens)
       captures
   in
-  let rec pop tokens = function
+  let rec pop prev_idx tokens = function
     | [] -> tokens
-    | (ending, scopes) :: stack -> pop ({ scopes; ending } :: tokens) stack
+    | (start_pos, end_pos, scopes, patterns) :: stack ->
+      let prev_idx, tokens =
+        emit_segment prev_idx tokens start_pos end_pos scopes patterns
+      in
+      pop prev_idx tokens stack
   in
-  pop tokens stack
+  pop prev_idx tokens stack
+
+let emit_end_captures ~line ~re ~offset ~tokenize_capture_patterns
+    ~capture_scopes ~prefix_scopes ~delim_name ~delim_end_captures ~pos ~end_
+    ~region toks =
+  let toks = { scopes = prefix_scopes; ending = pos } :: toks in
+  handle_captures ~region_offset:offset ~line re ~tokenize_capture_patterns
+    capture_scopes delim_name pos end_ region delim_end_captures toks
+
+let emit_begin_match_tokens ~line ~re ~tokenize_capture_patterns ~scopes ~name
+    ~captures ~pos ~end_ ~region toks =
+  let toks = { scopes; ending = pos } :: toks in
+  let toks =
+    handle_captures ~line ~tokenize_capture_patterns re scopes name pos end_
+      region captures toks
+  in
+  { scopes = add_scopes scopes [ name ]; ending = end_ } :: toks
 
 (* Tokenizes a line according to the grammar.
 
@@ -280,40 +405,43 @@ let rec match_line ~t ~grammar ~stack ~pos ~toks ~line rem_pats =
       let d = se.stack_delim in
       (se.stack_scopes, d.delim_patterns, se.stack_repos, se.stack_grammar)
   in
+  let run_capture_patterns base_scopes patterns start end_ =
+    tokenize_capture_patterns ~t ~repos ~line ~base_scopes ~start ~end_
+      patterns
+  in
   (* Try each pattern in the list until one matches. If none match, increment
      [pos] and try all the patterns again. *)
-  let rec try_pats repos cur_grammar ~k = function
+  let rec try_pats repos cur_grammar ~k pats =
+    let continue pats () = try_pats repos cur_grammar ~k pats in
+    let try_nested nested_repos nested_grammar nested_patterns pats =
+      try_pats nested_repos nested_grammar ~k:(continue pats) nested_patterns
+    in
+    match pats with
     | [] -> k () (* No patterns have matched, so call the continuation *)
     | Match m :: pats -> (
       match match_regex m.pattern line pos Oniguruma.Options.none with
-      | No_match | Empty_match _ -> try_pats repos cur_grammar ~k pats
+      | No_match | Empty_match _ -> continue pats ()
       | Nonempty_match { region; end_ } ->
-        let toks = { scopes; ending = pos } :: toks in
         let toks =
-          handle_captures m.pattern scopes m.name pos end_ region m.captures
-            toks
-        in
-        let toks =
-          { scopes = add_scopes scopes [ m.name ]; ending = end_ } :: toks
+          emit_begin_match_tokens ~line ~re:m.pattern
+            ~tokenize_capture_patterns:run_capture_patterns ~scopes
+            ~name:m.name ~captures:m.captures ~pos ~end_ ~region toks
         in
         match_line ~t ~grammar ~stack ~pos:end_ ~toks ~line
           (next_pats grammar stack))
     | Delim d :: pats -> (
       (* Try to match the delimiter's begin pattern *)
       match match_regex d.delim_begin line pos Oniguruma.Options.none with
-      | No_match -> try_pats repos cur_grammar ~k pats
+      | No_match -> continue pats ()
       | Empty_match _ when has_same_delim_at_pos stack d pos ->
         match_line ~t ~grammar ~stack ~pos:(pos + 1) ~toks ~line
           (next_pats grammar stack)
       | Empty_match { region; end_ } | Nonempty_match { region; end_ } -> (
-        let toks = { scopes; ending = pos } :: toks in
         let toks =
-          handle_captures d.delim_begin scopes d.delim_name pos end_ region
-            d.delim_begin_captures toks
-        in
-        let toks =
-          { scopes = add_scopes scopes [ d.delim_name ]; ending = end_ }
-          :: toks
+          emit_begin_match_tokens ~line ~re:d.delim_begin
+            ~tokenize_capture_patterns:run_capture_patterns ~scopes
+            ~name:d.delim_name ~captures:d.delim_begin_captures ~pos ~end_
+            ~region toks
         in
         let se =
           let stack_end_re, stack_end_re_parent_anchor =
@@ -334,11 +462,11 @@ let rec match_line ~t ~grammar ~stack ~pos ~toks ~line rem_pats =
         in
         match d.delim_kind with
         | End ->
-          (* Push the delimiter on the stack and continue *)
+          (* Push the delimiter on the stack and continue. *)
           match_line ~t ~grammar ~stack:(se :: stack) ~pos:end_ ~toks ~line
             d.delim_patterns
         | While ->
-          (* Subsume the remainder of the line into a span *)
+          (* Subsume the remainder of the line into a span. *)
           ( remove_empties
               ({
                  scopes =
@@ -349,119 +477,104 @@ let rec match_line ~t ~grammar ~stack ~pos ~toks ~line rem_pats =
             se :: stack )))
     | Scope_patterns { scope_name = _; child_patterns } :: pats ->
       (* Expand child patterns inline with fallback continuation *)
-      let k () = try_pats repos cur_grammar ~k pats in
-      try_pats repos cur_grammar child_patterns ~k
+      try_pats repos cur_grammar child_patterns ~k:(continue pats)
     | Include_scope name :: pats -> (
-      match find_by_scope_name t name with
-      | None ->
-        (* Grammar not found; try the next pattern. *)
-        try_pats repos cur_grammar ~k pats
-      | Some nested_grammar ->
-        let k () = try_pats repos cur_grammar ~k pats in
-        try_pats
-          [ nested_grammar.repository ]
-          nested_grammar nested_grammar.patterns ~k)
+      match split_scope_repo_include name with
+      | None -> (
+        match find_by_scope_name t name with
+        | None ->
+          (* Grammar not found; try the next pattern. *)
+          continue pats ()
+        | Some nested_grammar ->
+          try_nested
+            [ nested_grammar.repository ]
+            nested_grammar nested_grammar.patterns pats)
+      | Some (scope_name, key) -> (
+        match find_by_scope_name t scope_name with
+        | None -> continue pats ()
+        | Some nested_grammar -> (
+          match Hashtbl.find_opt nested_grammar.repository key with
+          | None -> continue pats ()
+          | Some item -> (
+            let nested_repos =
+              item.repo_inner :: [ nested_grammar.repository ]
+            in
+            match item.repo_item_kind with
+            | Repo_rule rule ->
+              try_nested nested_repos nested_grammar [ rule ] pats
+            | Repo_patterns pats' ->
+              try_nested nested_repos nested_grammar pats' pats))))
     | Include_base :: pats ->
-      let k () = try_pats repos cur_grammar ~k pats in
-      try_pats [ grammar.repository ] grammar grammar.patterns ~k
+      try_nested [ grammar.repository ] grammar grammar.patterns pats
     | Include_self :: pats ->
-      let k () = try_pats repos cur_grammar ~k pats in
-      try_pats [ cur_grammar.repository ] cur_grammar cur_grammar.patterns ~k
+      try_nested [ cur_grammar.repository ] cur_grammar cur_grammar.patterns
+        pats
     | Include_local key :: pats -> (
       match find_nested key repos with
-      | None -> try_pats repos cur_grammar ~k pats
+      | None -> continue pats ()
       | Some item -> (
         match item.repo_item_kind with
         | Repo_rule rule ->
           try_pats (item.repo_inner :: repos) cur_grammar (rule :: pats) ~k
         | Repo_patterns pats' ->
-          let k () = try_pats repos cur_grammar ~k pats in
-          try_pats (item.repo_inner :: repos) cur_grammar pats' ~k))
+          try_nested (item.repo_inner :: repos) cur_grammar pats' pats))
   in
   let try_delim stack_top stack' ~k =
     (* Try to match the delimiter's end pattern *)
     let delim = stack_top.stack_delim in
-    let match_end () =
-      match stack_top.stack_end_re_parent_anchor with
-      | None ->
-        let re = stack_top.stack_end_re in
-        let offset = 0 in
-        (re, offset, line)
-      | Some re ->
-        let offset = stack_top.stack_end_anchor_pos in
-        if offset >= String.length line then (stack_top.stack_end_re, 0, line)
-        else
-          let line_for_match =
-            String.sub line offset (String.length line - offset)
-          in
-          (re, offset, line_for_match)
+    let run_capture_patterns base_scopes patterns start end_ =
+      tokenize_capture_patterns ~t ~repos:stack_top.stack_repos ~line
+        ~base_scopes ~start ~end_ patterns
     in
-    let emit_close_tokens re offset region end_ =
-      let toks =
-        {
-          scopes =
-            add_scopes stack_top.stack_prev_scopes
-              [ delim.delim_name; delim.delim_content_name ];
-          ending = pos;
-        }
-        :: toks
-      in
-      handle_captures ~region_offset:offset re stack_top.stack_prev_scopes
-        delim.delim_name pos end_ region delim.delim_end_captures toks
+    let re, offset, line_for_match =
+      select_end_match_context ~line ~anchor_pos:stack_top.stack_end_anchor_pos
+        ~default_re:stack_top.stack_end_re
+        ~parent_anchor_re:stack_top.stack_end_re_parent_anchor
     in
     let end_match =
-      let re, offset, line_for_match = match_end () in
-      let pos_for_match = pos - offset in
-      if pos_for_match < 0 then None
-      else
-        match
-          match_regex re line_for_match pos_for_match Oniguruma.Options.none
-        with
-        | No_match -> None
-        | Empty_match { region; end_ } ->
-          let end_ = end_ + offset in
-          let toks = emit_close_tokens re offset region end_ in
-          Some (`Empty, end_, toks)
-        | Nonempty_match { region; end_ } ->
-          let end_ = end_ + offset in
-          let toks = emit_close_tokens re offset region end_ in
-          Some (`Nonempty, end_, toks)
+      match match_end_at ~re ~offset ~line_for_match ~pos with
+      | None -> None
+      | Some (region, start, end_) ->
+        assert (start = pos);
+        let toks =
+          emit_end_captures ~line ~re ~offset
+            ~tokenize_capture_patterns:run_capture_patterns
+            ~capture_scopes:stack_top.stack_prev_scopes
+            ~prefix_scopes:
+              (add_scopes stack_top.stack_prev_scopes
+                 [ delim.delim_name; delim.delim_content_name ])
+            ~delim_name:delim.delim_name
+            ~delim_end_captures:delim.delim_end_captures ~pos ~end_ ~region
+            toks
+        in
+        Some (end_, toks)
     in
     match (delim.delim_kind, end_match) with
     | End, None -> k ()
-    | End, Some (`Empty, end_, toks) ->
-      if stack_top.stack_enter_pos = pos then
-        (* Zero-width end at its enter point: pop and force progress. *)
-        match_line ~t ~grammar ~stack:stack' ~pos:(pos + 1) ~toks ~line
-          (next_pats grammar stack')
+    | End, Some (end_, toks') ->
+      if not (has_progress pos end_) then
+        if stack_top.stack_enter_pos >= pos then
+          (* Zero-width end at or before line start for this stack frame:
+             pop and force progress. *)
+          match_line ~t ~grammar ~stack:stack' ~pos:(pos + 1) ~toks ~line
+            (next_pats grammar stack')
+        else
+          (* Zero-width end later on the same line is deferred so the current
+             scope remains active through end-of-line. *)
+          k ()
       else
         let toks =
-          { scopes = add_scopes scopes [ delim.delim_name ]; ending = end_ }
-          :: toks
+          emit_delim_close_token ~base_scopes:stack_top.stack_prev_scopes
+            ~delim_name:delim.delim_name ~ending:end_ toks'
         in
         (* Pop the delimiter off the stack and continue *)
         match_line ~t ~grammar ~stack:stack' ~pos:end_ ~toks ~line
           (next_pats grammar stack')
-    | End, Some (`Nonempty, end_, toks) ->
-      let toks =
-        { scopes = add_scopes scopes [ delim.delim_name ]; ending = end_ }
-        :: toks
-      in
-      (* Pop the delimiter off the stack and continue *)
-      match_line ~t ~grammar ~stack:stack' ~pos:end_ ~toks ~line
-        (next_pats grammar stack')
     | While, _ -> error "Unreachable"
   in
   if pos > len then
     (* End of string reached *)
-    match stack with
-    | [] -> (remove_empties ({ scopes; ending = len } :: toks), stack)
-    | se :: _stack' ->
-      let d = se.stack_delim in
-      ( remove_empties
-          ({ scopes = add_scopes scopes [ d.delim_name ]; ending = len }
-          :: toks),
-        stack )
+    (remove_empties ({ scopes; ending = len } :: toks), stack)
   else
     (* No patterns have matched, so increment the position and try again *)
     let k () =
@@ -481,7 +594,7 @@ let rec match_line ~t ~grammar ~stack ~pos ~toks ~line rem_pats =
           try_delim se stack' ~k:(fun () ->
               try_pats repos se.stack_grammar rem_pats ~k))
 
-let tokenize_exn t grammar stack line =
+and tokenize_exn t grammar stack line =
   (* See https://github.com/Microsoft/vscode-textmate/issues/25 for how to
      handle while rules. This is important for the Markdown grammar. *)
   let rec try_while_rules pos toks rem_stack = function
@@ -490,33 +603,68 @@ let tokenize_exn t grammar stack line =
       match se.stack_delim.delim_kind with
       | End -> try_while_rules pos toks (se :: rem_stack) stack
       | While ->
-        let re = se.stack_end_re in
+        let run_capture_patterns base_scopes patterns start end_ =
+          tokenize_capture_patterns ~t ~repos:se.stack_repos ~line ~base_scopes
+            ~start ~end_ patterns
+        in
+        let re, offset, line_for_match =
+          select_end_match_context ~line ~anchor_pos:pos
+            ~default_re:se.stack_end_re
+            ~parent_anchor_re:se.stack_end_re_parent_anchor
+        in
         let rec loop pos' =
           if pos' = String.length line then (toks, pos, rem_stack)
           else
-            match match_regex re line pos' Oniguruma.Options.none with
-            | No_match | Empty_match _ -> loop (pos' + 1)
-            | Nonempty_match { region; end_ } ->
-              let toks =
-                { scopes = se.stack_prev_scopes; ending = pos' } :: toks
-              in
-              let toks =
-                handle_captures re se.stack_prev_scopes
-                  se.stack_delim.delim_name pos' end_ region
-                  se.stack_delim.delim_end_captures toks
-              in
-              let toks =
-                {
-                  scopes =
-                    add_scopes se.stack_prev_scopes
-                      [ se.stack_delim.delim_name ];
-                  ending = end_;
-                }
-                :: toks
-              in
-              try_while_rules end_ toks (se :: rem_stack) stack
+            match match_end_at ~re ~offset ~line_for_match ~pos:pos' with
+            | None -> loop (pos' + 1)
+            | Some (region, start, end_) ->
+              assert (start = pos');
+              if not (has_progress pos' end_) then loop (pos' + 1)
+              else
+                let toks =
+                  emit_end_captures ~line ~re ~offset
+                    ~tokenize_capture_patterns:run_capture_patterns
+                    ~capture_scopes:se.stack_scopes
+                    ~prefix_scopes:se.stack_scopes ~delim_name:None
+                    ~delim_end_captures:se.stack_delim.delim_end_captures
+                    ~pos:pos' ~end_ ~region toks
+                in
+                let toks =
+                  emit_delim_close_token ~base_scopes:se.stack_prev_scopes
+                    ~delim_name:se.stack_delim.delim_name ~ending:end_ toks
+                in
+                try_while_rules end_ toks (se :: rem_stack) stack
         in
         loop pos)
   in
   let toks, pos, stack = try_while_rules 0 [] [] (List.rev stack) in
   match_line ~t ~grammar ~stack ~pos ~toks ~line (next_pats grammar stack)
+
+and tokenize_capture_patterns ~t ~repos ~line ~base_scopes ~start ~end_
+    patterns =
+  if start >= end_ then []
+  else
+    let capture_scope_name = "__capture__" in
+    let capture_grammar =
+      {
+        name = None;
+        scope_name = capture_scope_name;
+        filetypes = [];
+        patterns;
+        repository = merge_repos repos;
+      }
+    in
+    let segment = String.sub line start (end_ - start) in
+    let nested, _ = tokenize_exn t capture_grammar empty segment in
+    let nested = List.rev nested in
+    let normalize_scopes scopes =
+      match List.rev scopes with
+      | root :: rest when root = capture_scope_name -> List.rev rest
+      | _ -> scopes
+    in
+    List.map
+      (fun tok ->
+        let scopes = normalize_scopes tok.scopes @ base_scopes in
+        let ending = tok.ending + start in
+        { ending; scopes })
+      nested

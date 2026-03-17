@@ -1,5 +1,19 @@
 (tests
- (names test_find test_tokenize test_cpp test_csharp test_ocaml)
+ (names
+  test_find
+  test_fuzz
+  test_tokenize
+  test_cpp
+  test_csharp
+  test_ocaml
+  test_vscode_conformance)
  (deps
-  (glob_files data/*))
+  (glob_files data/*)
+  (glob_files vscode/first-mate/*)
+  (glob_files vscode/phase4/*)
+  (glob_files vscode/phase4/fixtures/*)
+  (glob_files vscode/phase5/*)
+  (glob_files vscode/phase5/fixtures/*)
+  (glob_files vscode/suite1/*)
+ (glob_files vscode/suite1/fixtures/*))
  (libraries alcotest ezjsonm plist-xml textmate-language yojson))

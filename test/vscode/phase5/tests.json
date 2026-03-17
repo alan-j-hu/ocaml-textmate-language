@@ -1,0 +1,24 @@
+[
+  {
+    "desc": "Phase5 include external repository rule",
+    "grammars": [
+      "fixtures/include-external-repository-rule.json",
+      "fixtures/python-mini.json"
+    ],
+    "grammarPath": "fixtures/include-external-repository-rule.json",
+    "lines": [
+      {
+        "line": "enumerate",
+        "tokens": [
+          {
+            "value": "enumerate",
+            "scopes": [
+              "test.include-external-repository-rule",
+              "support.function.builtin.python"
+            ]
+          }
+        ]
+      }
+    ]
+  }
+]
