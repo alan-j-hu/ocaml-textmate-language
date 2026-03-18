@@ -156,20 +156,23 @@ let compile_regex pattern delim =
   | Error e -> error ("End pattern: " ^ delim.delim_end ^ ": " ^ e)
   | Ok re -> re
 
-let match_subst_for delim line region =
+let match_subst_for delim line region parent_anchor_pos =
   let pattern = subst_backrefs delim line region in
-  let re = compile_regex pattern delim in
-  let re_parent_anchor =
-    match rewrite_g_anchor_to_absolute_opt pattern with
-    | Some rewritten -> Some (compile_regex rewritten delim)
-    | None -> None
+  let stack_end_re = compile_regex pattern delim in
+  let stack_end_anchor =
+    match
+      ( rewrite_g_anchor_to_absolute_opt pattern,
+        rewrite_g_anchor_to_never_opt pattern )
+    with
+    | None, None -> No_g_anchor
+    | Some rewritten_parent_anchor, Some rewritten_no_parent_anchor ->
+      Parent_anchor_current_line
+        ( parent_anchor_pos,
+          compile_regex rewritten_parent_anchor delim,
+          compile_regex rewritten_no_parent_anchor delim )
+    | _ -> error "Inconsistent compiled end regex variants"
   in
-  let re_no_parent_anchor =
-    match rewrite_g_anchor_to_never_opt pattern with
-    | Some rewritten -> Some (compile_regex rewritten delim)
-    | None -> None
-  in
-  (re, re_parent_anchor, re_no_parent_anchor)
+  (stack_end_re, stack_end_anchor)
 
 let rec find_nested scope = function
   | [] -> None
@@ -326,20 +329,8 @@ let rec match_line ~t ~grammar ~stack ~pos ~toks ~line rem_pats =
           :: toks
         in
         let se =
-          let ( stack_end_re,
-                stack_end_re_parent_anchor,
-                stack_end_re_no_parent_anchor ) =
-            match_subst_for d line region
-          in
-          let stack_end_anchor =
-            match
-              (stack_end_re_parent_anchor, stack_end_re_no_parent_anchor)
-            with
-            | None, None -> No_g_anchor
-            | Some re_parent_anchor, Some re_no_parent_anchor ->
-              Parent_anchor_current_line
-                (end_, re_parent_anchor, re_no_parent_anchor)
-            | _ -> error "Inconsistent compiled end regex variants"
+          let stack_end_re, stack_end_anchor =
+            match_subst_for d line region end_
           in
           {
             stack_delim = d;
