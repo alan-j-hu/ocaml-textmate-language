@@ -376,22 +376,16 @@ let rec match_line ~t ~grammar ~stack ~pos ~toks ~line rem_pats =
   let try_delim stack_top stack' ~k =
     (* Try to match the delimiter's end pattern *)
     let delim = stack_top.stack_delim in
-    let match_end () =
+    let re, offset, line_for_match =
+      let anchor_pos = stack_top.stack_end_anchor_pos in
+      let line_length = String.length line in
       match stack_top.stack_end_re_parent_anchor with
-      | None ->
-        let re = stack_top.stack_end_re in
-        let offset = 0 in
-        (re, offset, line)
-      | Some re ->
-        let offset = stack_top.stack_end_anchor_pos in
-        if offset >= String.length line then (stack_top.stack_end_re, 0, line)
-        else
-          let line_for_match =
-            String.sub line offset (String.length line - offset)
-          in
-          (re, offset, line_for_match)
+      | Some re when anchor_pos < line_length ->
+        let str = String.sub line anchor_pos (line_length - anchor_pos) in
+        (re, anchor_pos, str)
+      | _ -> (stack_top.stack_end_re, 0, line)
     in
-    let emit_close_tokens re offset region end_ =
+    let emit_close_tokens region end_ =
       let toks =
         {
           scopes =
@@ -405,7 +399,6 @@ let rec match_line ~t ~grammar ~stack ~pos ~toks ~line rem_pats =
         delim.delim_name pos end_ region delim.delim_end_captures toks
     in
     let end_match =
-      let re, offset, line_for_match = match_end () in
       let pos_for_match = pos - offset in
       if pos_for_match < 0 then None
       else
@@ -415,11 +408,11 @@ let rec match_line ~t ~grammar ~stack ~pos ~toks ~line rem_pats =
         | No_match -> None
         | Empty_match { region; end_ } ->
           let end_ = end_ + offset in
-          let toks = emit_close_tokens re offset region end_ in
+          let toks = emit_close_tokens region end_ in
           Some (`Empty, end_, toks)
         | Nonempty_match { region; end_ } ->
           let end_ = end_ + offset in
-          let toks = emit_close_tokens re offset region end_ in
+          let toks = emit_close_tokens region end_ in
           Some (`Nonempty, end_, toks)
     in
     match (delim.delim_kind, end_match) with
