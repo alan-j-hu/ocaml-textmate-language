@@ -2,48 +2,56 @@ open Util
 
 let one_token line scopes = [ { line; expected = [ (1, scopes) ] } ]
 let line_token line scopes = { line; expected = [ (1, scopes) ] }
+let has_scope scope scopes = List.exists (( = ) scope) scopes
 
-let check_end_pattern_g_anchor () =
-  let grammar_json =
-    Yojson.Basic.from_string
-      {|{
-  "scopeName": "source.ganchor",
-  "name": "ganchor",
-  "patterns": [
-    {
-      "begin": "\"",
-      "end": "(?<!\\G)\"",
-      "name": "string.quoted.test"
-    },
-    {
-      "match": "[a-zA-Z-]+",
-      "name": "word.test"
-    }
-  ]
-}|}
+let scopes_for_char line toks ch =
+  let rec build start = function
+    | [] -> []
+    | tok :: rest ->
+      let ending = TmLanguage.ending tok in
+      let text = String.sub line start (ending - start) in
+      (text, TmLanguage.scopes tok) :: build ending rest
+  in
+  List.find_map
+    (fun (text, scopes) ->
+      if String.contains text ch then Some scopes else None)
+    (build 0 toks)
+
+let create_ganchor_grammar ~scope_name ~end_pattern =
+  let grammar_json : Yojson.Basic.t =
+    `Assoc
+      [
+        ("scopeName", `String scope_name);
+        ("name", `String "ganchor");
+        ( "patterns",
+          `List
+            [
+              `Assoc
+                [
+                  ("begin", `String "\"");
+                  ("end", `String end_pattern);
+                  ("name", `String "string.quoted.test");
+                ];
+              `Assoc
+                [
+                  ("match", `String "[a-zA-Z-]+"); ("name", `String "word.test");
+                ];
+            ] );
+      ]
   in
   let grammar = TmLanguage.of_yojson_exn grammar_json in
   let t = TmLanguage.create () in
   TmLanguage.add_grammar t grammar;
+  (t, grammar)
+
+let check_end_pattern_g_anchor () =
+  let t, grammar =
+    create_ganchor_grammar ~scope_name:"source.ganchor"
+      ~end_pattern:"(?<!\\G)\""
+  in
   let line = "cmd \"x\" -y" in
   let toks, _ = TmLanguage.tokenize_exn t grammar TmLanguage.empty line in
-  let spans =
-    let rec build start = function
-      | [] -> []
-      | tok :: rest ->
-        let ending = TmLanguage.ending tok in
-        let text = String.sub line start (ending - start) in
-        (text, TmLanguage.scopes tok) :: build ending rest
-    in
-    build 0 toks
-  in
-  let dash_scopes =
-    List.find_map
-      (fun (text, scopes) ->
-        if String.contains text '-' then Some scopes else None)
-      spans
-  in
-  let has_scope scope scopes = List.exists (( = ) scope) scopes in
+  let dash_scopes = scopes_for_char line toks '-' in
   let ok =
     match dash_scopes with
     | None -> false
@@ -53,6 +61,33 @@ let check_end_pattern_g_anchor () =
   in
   Alcotest.(check bool)
     "dash token should be outside quoted string and matched as a word" true ok
+
+let check_g_anchor_without_parent_anchor ~scope_name ~end_pattern
+    ~expect_word_scope () =
+  let t, grammar = create_ganchor_grammar ~scope_name ~end_pattern in
+  let _, stack = TmLanguage.tokenize_exn t grammar TmLanguage.empty "\"" in
+  let line = "\"x" in
+  let toks, _ = TmLanguage.tokenize_exn t grammar stack line in
+  let x_scopes = scopes_for_char line toks 'x' in
+  let ok =
+    match x_scopes with
+    | None -> false
+    | Some scopes ->
+      has_scope "word.test" scopes = expect_word_scope
+      && has_scope "string.quoted.test" scopes <> expect_word_scope
+  in
+  Alcotest.(check bool)
+    "unexpected scope for unavailable parent anchor" true ok
+
+let check_positive_g_anchor_fails_without_parent_anchor () =
+  check_g_anchor_without_parent_anchor
+    ~scope_name:"source.ganchor.positive-unavailable" ~end_pattern:"\\G\""
+    ~expect_word_scope:false ()
+
+let check_negative_g_anchor_matches_without_parent_anchor () =
+  check_g_anchor_without_parent_anchor
+    ~scope_name:"source.ganchor.negative-unavailable" ~end_pattern:"(?<!\\G)\""
+    ~expect_word_scope:true ()
 
 let () =
   Alcotest.run "Highlighting"
@@ -192,5 +227,9 @@ let () =
         [
           Alcotest.test_case "Closes quoted scope after begin anchor" `Quick
             check_end_pattern_g_anchor;
+          Alcotest.test_case "Positive \\G end fails without parent anchor"
+            `Quick check_positive_g_anchor_fails_without_parent_anchor;
+          Alcotest.test_case "Negative \\G end matches without parent anchor"
+            `Quick check_negative_g_anchor_matches_without_parent_anchor;
         ] );
     ]

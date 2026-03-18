@@ -5,12 +5,16 @@ type token = { ending : int; scopes : string list }
 let ending token = token.ending
 let scopes token = token.scopes
 
+type end_anchor =
+  | No_g_anchor
+  | Parent_anchor_current_line of int * regex * regex
+  | Parent_anchor_unavailable of regex
+
 type stack_elem = {
   stack_delim : delim;
   stack_enter_pos : int;
-  stack_end_anchor_pos : int;
+  stack_end_anchor : end_anchor;
   stack_end_re : regex;
-  stack_end_re_parent_anchor : regex option;
   stack_grammar : grammar;
   stack_repos : (string, repo_item) Hashtbl.t list;
   stack_scopes : string list;
@@ -109,7 +113,7 @@ let subst_backrefs delim line region =
   loop 0 false;
   Buffer.contents buf
 
-let rewrite_g_anchor_to_absolute_opt regex =
+let rewrite_g_anchor_opt ~replacement regex =
   let len = String.length regex in
   let buf = Buffer.create len in
   let rec loop i in_char_class saw_g_anchor =
@@ -123,7 +127,7 @@ let rewrite_g_anchor_to_absolute_opt regex =
         else
           let next = regex.[i + 1] in
           if (not in_char_class) && next = 'G' then (
-            Buffer.add_string buf "\\A";
+            Buffer.add_string buf replacement;
             loop (i + 2) in_char_class true)
           else (
             Buffer.add_char buf '\\';
@@ -137,6 +141,12 @@ let rewrite_g_anchor_to_absolute_opt regex =
         loop (i + 1) in_char_class saw_g_anchor
   in
   loop 0 false false
+
+let rewrite_g_anchor_to_absolute_opt regex =
+  rewrite_g_anchor_opt ~replacement:"\\A" regex
+
+let rewrite_g_anchor_to_never_opt regex =
+  rewrite_g_anchor_opt ~replacement:"\\b\\B" regex
 
 let compile_regex pattern delim =
   match
@@ -154,7 +164,12 @@ let match_subst_for delim line region =
     | Some rewritten -> Some (compile_regex rewritten delim)
     | None -> None
   in
-  (re, re_parent_anchor)
+  let re_no_parent_anchor =
+    match rewrite_g_anchor_to_never_opt pattern with
+    | Some rewritten -> Some (compile_regex rewritten delim)
+    | None -> None
+  in
+  (re, re_parent_anchor, re_no_parent_anchor)
 
 let rec find_nested scope = function
   | [] -> None
@@ -311,15 +326,26 @@ let rec match_line ~t ~grammar ~stack ~pos ~toks ~line rem_pats =
           :: toks
         in
         let se =
-          let stack_end_re, stack_end_re_parent_anchor =
+          let ( stack_end_re,
+                stack_end_re_parent_anchor,
+                stack_end_re_no_parent_anchor ) =
             match_subst_for d line region
+          in
+          let stack_end_anchor =
+            match
+              (stack_end_re_parent_anchor, stack_end_re_no_parent_anchor)
+            with
+            | None, None -> No_g_anchor
+            | Some re_parent_anchor, Some re_no_parent_anchor ->
+              Parent_anchor_current_line
+                (end_, re_parent_anchor, re_no_parent_anchor)
+            | _ -> error "Inconsistent compiled end regex variants"
           in
           {
             stack_delim = d;
             stack_enter_pos = pos;
-            stack_end_anchor_pos = end_;
+            stack_end_anchor;
             stack_end_re;
-            stack_end_re_parent_anchor;
             stack_repos = repos;
             stack_grammar = cur_grammar;
             stack_scopes =
@@ -377,13 +403,17 @@ let rec match_line ~t ~grammar ~stack ~pos ~toks ~line rem_pats =
     (* Try to match the delimiter's end pattern *)
     let delim = stack_top.stack_delim in
     let re, offset, line_for_match =
-      let anchor_pos = stack_top.stack_end_anchor_pos in
       let line_length = String.length line in
-      match stack_top.stack_end_re_parent_anchor with
-      | Some re when anchor_pos < line_length ->
-        let str = String.sub line anchor_pos (line_length - anchor_pos) in
-        (re, anchor_pos, str)
-      | _ -> (stack_top.stack_end_re, 0, line)
+      match stack_top.stack_end_anchor with
+      | No_g_anchor -> (stack_top.stack_end_re, 0, line)
+      | Parent_anchor_current_line (anchor_pos, re_parent_anchor, _)
+        when anchor_pos < line_length ->
+        let line_for_match =
+          String.sub line anchor_pos (line_length - anchor_pos)
+        in
+        (re_parent_anchor, anchor_pos, line_for_match)
+      | Parent_anchor_current_line _ -> (stack_top.stack_end_re, 0, line)
+      | Parent_anchor_unavailable re -> (re, 0, line)
     in
     let emit_close_tokens region end_ =
       let toks =
@@ -415,22 +445,7 @@ let rec match_line ~t ~grammar ~stack ~pos ~toks ~line rem_pats =
           let toks = emit_close_tokens region end_ in
           Some (`Nonempty, end_, toks)
     in
-    match (delim.delim_kind, end_match) with
-    | End, None -> k ()
-    | End, Some (`Empty, end_, toks) ->
-      if stack_top.stack_enter_pos = pos then
-        (* Zero-width end at its enter point: pop and force progress. *)
-        match_line ~t ~grammar ~stack:stack' ~pos:(pos + 1) ~toks ~line
-          (next_pats grammar stack')
-      else
-        let toks =
-          { scopes = add_scopes scopes [ delim.delim_name ]; ending = end_ }
-          :: toks
-        in
-        (* Pop the delimiter off the stack and continue *)
-        match_line ~t ~grammar ~stack:stack' ~pos:end_ ~toks ~line
-          (next_pats grammar stack')
-    | End, Some (`Nonempty, end_, toks) ->
+    let continue_after_close end_ toks =
       let toks =
         { scopes = add_scopes scopes [ delim.delim_name ]; ending = end_ }
         :: toks
@@ -438,6 +453,15 @@ let rec match_line ~t ~grammar ~stack ~pos ~toks ~line rem_pats =
       (* Pop the delimiter off the stack and continue *)
       match_line ~t ~grammar ~stack:stack' ~pos:end_ ~toks ~line
         (next_pats grammar stack')
+    in
+    match (delim.delim_kind, end_match) with
+    | End, None -> k ()
+    | End, Some (`Empty, _, toks) when stack_top.stack_enter_pos = pos ->
+      (* Zero-width end at its enter point: pop and force progress. *)
+      match_line ~t ~grammar ~stack:stack' ~pos:(pos + 1) ~toks ~line
+        (next_pats grammar stack')
+    | End, Some (`Empty, end_, toks) | End, Some (`Nonempty, end_, toks) ->
+      continue_after_close end_ toks
     | While, _ -> error "Unreachable"
   in
   if pos > len then
@@ -470,6 +494,19 @@ let rec match_line ~t ~grammar ~stack ~pos ~toks ~line rem_pats =
               try_pats repos se.stack_grammar rem_pats ~k))
 
 let tokenize_exn t grammar stack line =
+  let stack =
+    List.map
+      (fun se ->
+        let stack_end_anchor =
+          match se.stack_end_anchor with
+          | Parent_anchor_current_line (_, _, re_no_parent_anchor) ->
+            Parent_anchor_unavailable re_no_parent_anchor
+          | No_g_anchor as mode -> mode
+          | Parent_anchor_unavailable _ as mode -> mode
+        in
+        { se with stack_end_anchor })
+      stack
+  in
   (* See https://github.com/Microsoft/vscode-textmate/issues/25 for how to
      handle while rules. This is important for the Markdown grammar. *)
   let rec try_while_rules pos toks rem_stack = function
