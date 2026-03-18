@@ -493,20 +493,19 @@ let rec match_line ~t ~grammar ~stack ~pos ~toks ~line rem_pats =
           try_delim se stack' ~k:(fun () ->
               try_pats repos se.stack_grammar rem_pats ~k))
 
+let expire_parent_anchor = function
+  | Parent_anchor_current_line (_, _, re_no_parent_anchor) ->
+    Parent_anchor_unavailable re_no_parent_anchor
+  | No_g_anchor as mode -> mode
+  | Parent_anchor_unavailable _ as mode -> mode
+
+let expire_parent_anchors stack =
+  List.map
+    (fun se ->
+      { se with stack_end_anchor = expire_parent_anchor se.stack_end_anchor })
+    stack
+
 let tokenize_exn t grammar stack line =
-  let stack =
-    List.map
-      (fun se ->
-        let stack_end_anchor =
-          match se.stack_end_anchor with
-          | Parent_anchor_current_line (_, _, re_no_parent_anchor) ->
-            Parent_anchor_unavailable re_no_parent_anchor
-          | No_g_anchor as mode -> mode
-          | Parent_anchor_unavailable _ as mode -> mode
-        in
-        { se with stack_end_anchor })
-      stack
-  in
   (* See https://github.com/Microsoft/vscode-textmate/issues/25 for how to
      handle while rules. This is important for the Markdown grammar. *)
   let rec try_while_rules pos toks rem_stack = function
@@ -544,4 +543,7 @@ let tokenize_exn t grammar stack line =
         loop pos)
   in
   let toks, pos, stack = try_while_rules 0 [] [] (List.rev stack) in
-  match_line ~t ~grammar ~stack ~pos ~toks ~line (next_pats grammar stack)
+  let toks, stack =
+    match_line ~t ~grammar ~stack ~pos ~toks ~line (next_pats grammar stack)
+  in
+  (toks, expire_parent_anchors stack)
