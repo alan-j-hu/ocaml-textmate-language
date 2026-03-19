@@ -51,24 +51,14 @@ let classify_match ?(options = Oniguruma.Options.none) regex line pos
     if has_progress (start + region_offset) end_ then Nonempty_match matched
     else Empty_match matched
 
-let match_anchored_regex anchored_regex line pos anchor =
-  match (anchored_regex.parent_anchor, anchor) with
-  | Some parent_anchor_regex, Some anchor_pos
-    when anchor_pos <= String.length line ->
-    (* Anchor available: substring from anchor_pos so \A matches there *)
-    let line_for_match =
-      String.sub line anchor_pos (String.length line - anchor_pos)
-    in
-    let pos_for_match = pos - anchor_pos in
-    if pos_for_match < 0 then No_match
-    else
-      classify_match parent_anchor_regex line_for_match pos_for_match
-        anchor_pos
-  | _ when anchored_regex.has_g_anchor ->
-    (* Pattern has \G but anchor is unavailable: disable \G matching *)
-    classify_match anchored_regex.plain line pos 0
-      ~options:Oniguruma.Options.not_begin_position
-  | _ -> classify_match anchored_regex.plain line pos 0
+(* Match with \G anchor handling *)
+let match_pattern anchored_regex line pos anchor =
+  let options =
+    if anchored_regex.has_g_anchor && anchor <> Some pos then
+      Oniguruma.Options.not_begin_position
+    else Oniguruma.Options.none
+  in
+  classify_match ~options anchored_regex.regex line pos 0
 
 let has_same_delim_at_pos stack delim pos =
   List.exists
@@ -106,7 +96,7 @@ let insert_capture buf line beg end_ =
 let subst_backrefs delim line region =
   let { delim_end = regex_str; delim_begin = begin_re; _ } = delim in
   let buf = Buffer.create (String.length regex_str) in
-  let num_beg_captures = Oniguruma.num_captures begin_re.plain in
+  let num_beg_captures = Oniguruma.num_captures begin_re.regex in
   let regex_len = String.length regex_str in
   let rec loop i escaped =
     if i < regex_len then
@@ -132,12 +122,6 @@ let subst_backrefs delim line region =
   in
   loop 0 false;
   Buffer.contents buf
-
-let match_subst_for delim line region =
-  let pattern = subst_backrefs delim line region in
-  Common.compile_anchored_regex
-    ~context:("End pattern for " ^ delim.delim_end)
-    pattern
 
 let rec find_nested scope = function
   | [] -> None
@@ -299,7 +283,7 @@ let rec match_line ~t ~grammar ~stack ~anchor ~pos ~toks ~line rem_pats =
   let rec try_pats repos cur_grammar ~k = function
     | [] -> k ()
     | Match m :: pats -> (
-      match match_anchored_regex m.pattern line pos anchor with
+      match match_pattern m.pattern line pos anchor with
       | No_match | Empty_match _ -> try_pats repos cur_grammar ~k pats
       | Nonempty_match matched ->
         let toks =
@@ -309,7 +293,7 @@ let rec match_line ~t ~grammar ~stack ~anchor ~pos ~toks ~line rem_pats =
         match_line ~t ~grammar ~stack ~anchor ~pos:matched.end_ ~toks ~line
           (next_pats grammar stack))
     | Delim d :: pats -> (
-      match match_anchored_regex d.delim_begin line pos anchor with
+      match match_pattern d.delim_begin line pos anchor with
       | No_match -> try_pats repos cur_grammar ~k pats
       | Empty_match _ when has_same_delim_at_pos stack d pos ->
         match_line ~t ~grammar ~stack ~anchor ~pos:(pos + 1) ~toks ~line
@@ -324,12 +308,18 @@ let rec match_line ~t ~grammar ~stack ~anchor ~pos ~toks ~line rem_pats =
         let child_scopes =
           add_scopes frame.frame_scopes [ d.delim_name; d.delim_content_name ]
         in
+        let stack_end_re =
+          let pattern = subst_backrefs d line region in
+          Common.compile_anchored_regex
+            ~error_context:("End pattern for " ^ d.delim_end)
+            pattern
+        in
         let se =
           {
             stack_delim = d;
             stack_enter_pos = Some pos;
             stack_resume_anchor = anchor;
-            stack_end_re = match_subst_for d line region;
+            stack_end_re;
             stack_repos = repos;
             stack_grammar = cur_grammar;
             stack_scopes = child_scopes;
@@ -376,9 +366,7 @@ let rec match_line ~t ~grammar ~stack ~anchor ~pos ~toks ~line rem_pats =
   in
   let try_delim_end stack_top stack_tail ~k =
     let delim = stack_top.stack_delim in
-    let end_match =
-      match_anchored_regex stack_top.stack_end_re line pos anchor
-    in
+    let end_match = match_pattern stack_top.stack_end_re line pos anchor in
     let pop_after_close matched toks =
       let toks =
         emit_scope_token frame.frame_scopes delim.delim_name matched.end_ toks
@@ -449,7 +437,7 @@ let tokenize_exn t grammar stack line =
         let rec loop pos' =
           if pos' = String.length line then (toks, pos, anchor, rem_stack)
           else
-            match match_anchored_regex se.stack_end_re line pos' anchor with
+            match match_pattern se.stack_end_re line pos' anchor with
             | No_match | Empty_match _ -> loop (pos' + 1)
             | Nonempty_match matched ->
               let toks =

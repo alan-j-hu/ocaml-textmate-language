@@ -4,12 +4,7 @@ module IntMap = Map.Make (Int)
 
 type capture = { capture_name : string option; capture_patterns : rule list }
 and regex = Oniguruma.Encoding.utf8 Oniguruma.t
-
-and anchored_regex = {
-  plain : regex;
-  has_g_anchor : bool;
-  parent_anchor : regex option;
-}
+and anchored_regex = { regex : regex; has_g_anchor : bool }
 
 and match_ = {
   name : string option;
@@ -108,54 +103,22 @@ type yojson =
 
 exception Error of string
 
-(* Rewrite \G anchors to \A in a regex pattern. Returns None if no \G is
-   present. When \G is present and the parent anchor position is known, we
-   substring the line from that position so \A (start of string) corresponds
-   to the anchor. When the anchor is unavailable, we pass
-   ONIG_OPTION_NOT_BEGIN_POSITION to the plain regex instead. *)
-let rewrite_g_anchor pattern =
+let has_g_anchor pattern =
   let len = String.length pattern in
-  let update_char_class in_cc = function
-    | '[' -> true
-    | ']' -> false
-    | _ -> in_cc
-  in
   let rec scan i in_cc =
     match len - i with
-    | 0 | 1 -> None
+    | 0 | 1 -> false
     | _ -> (
       match pattern.[i] with
-      | '\\' when (not in_cc) && pattern.[i + 1] = 'G' -> Some (i, i + 2)
+      | '\\' when (not in_cc) && pattern.[i + 1] = 'G' -> true
       | '\\' -> scan (i + 2) in_cc
-      | ch -> scan (i + 1) (update_char_class in_cc ch))
+      | '[' -> scan (i + 1) true
+      | ']' -> scan (i + 1) false
+      | _ -> scan (i + 1) in_cc)
   in
-  match scan 0 false with
-  | None -> None
-  | Some (g_pos, after_g) ->
-    let buf = Buffer.create len in
-    Buffer.add_string buf (String.sub pattern 0 g_pos);
-    Buffer.add_string buf "\\A";
-    let rec rewrite i in_cc =
-      match len - i with
-      | 0 -> ()
-      | 1 -> Buffer.add_char buf pattern.[i]
-      | _ -> (
-        match pattern.[i] with
-        | '\\' when (not in_cc) && pattern.[i + 1] = 'G' ->
-          Buffer.add_string buf "\\A";
-          rewrite (i + 2) in_cc
-        | '\\' ->
-          Buffer.add_char buf '\\';
-          Buffer.add_char buf pattern.[i + 1];
-          rewrite (i + 2) in_cc
-        | ch ->
-          Buffer.add_char buf ch;
-          rewrite (i + 1) (update_char_class in_cc ch))
-    in
-    rewrite after_g false;
-    Some (Buffer.contents buf)
+  scan 0 false
 
-let compile_regex ?context pattern =
+let compile_regex ?error_context pattern =
   match
     Oniguruma.create pattern Oniguruma.Options.none Oniguruma.Encoding.utf8
       Oniguruma.Syntax.default
@@ -163,22 +126,15 @@ let compile_regex ?context pattern =
   | Ok re -> re
   | Error msg ->
     let prefix =
-      match context with
+      match error_context with
       | None -> pattern
       | Some context -> context ^ ": " ^ pattern
     in
     raise (Error (prefix ^ ": " ^ msg))
 
-let compile_anchored_regex ?context pattern =
-  let plain = compile_regex ?context pattern in
-  match rewrite_g_anchor pattern with
-  | None -> { plain; has_g_anchor = false; parent_anchor = None }
-  | Some parent_pat ->
-    {
-      plain;
-      has_g_anchor = true;
-      parent_anchor = Some (compile_regex ?context parent_pat);
-    }
+let compile_anchored_regex ?error_context pattern =
+  let regex = compile_regex ?error_context pattern in
+  { regex; has_g_anchor = has_g_anchor pattern }
 
 let create () =
   {
