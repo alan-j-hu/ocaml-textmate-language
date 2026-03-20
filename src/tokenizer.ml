@@ -30,7 +30,6 @@ let has_progress start ending = ending > start
 type matched_region = {
   region : Oniguruma.Region.t;
   regex : regex;
-  region_offset : int;
   end_ : int;
 }
 
@@ -39,18 +38,6 @@ type match_result =
   | Empty_match of matched_region
   | Nonempty_match of matched_region
 
-let classify_match ?(options = Oniguruma.Options.none) regex line pos
-    region_offset =
-  match Oniguruma.match_ regex line pos options with
-  | None -> No_match
-  | Some region ->
-    let start = Oniguruma.Region.capture_beg region 0 in
-    let end_ = Oniguruma.Region.capture_end region 0 + region_offset in
-    assert (start = pos);
-    let matched = { region; regex; region_offset; end_ } in
-    if has_progress (start + region_offset) end_ then Nonempty_match matched
-    else Empty_match matched
-
 (* Match with \G anchor handling *)
 let match_pattern anchored_regex line pos anchor =
   let options =
@@ -58,7 +45,15 @@ let match_pattern anchored_regex line pos anchor =
       Oniguruma.Options.not_begin_position
     else Oniguruma.Options.none
   in
-  classify_match ~options anchored_regex.regex line pos 0
+  match Oniguruma.match_ anchored_regex.regex line pos options with
+  | None -> No_match
+  | Some region ->
+    let start = Oniguruma.Region.capture_beg region 0 in
+    let end_ = Oniguruma.Region.capture_end region 0 in
+    assert (start = pos);
+    let matched = { region; regex = anchored_regex.regex; end_ } in
+    if has_progress start end_ then Nonempty_match matched
+    else Empty_match matched
 
 let has_same_delim_at_pos stack delim pos =
   List.exists
@@ -145,8 +140,8 @@ let remove_empties =
   go []
 
 (* Emit tokens for the match region's captures. *)
-let handle_captures ?(region_offset = 0) re scopes default mat_start mat_end
-    region captures tokens =
+let handle_captures re scopes default mat_start mat_end region captures tokens
+    =
   let captures =
     Array.concat
       (Hashtbl.fold
@@ -170,7 +165,7 @@ let handle_captures ?(region_offset = 0) re scopes default mat_start mat_end
         else
           let beg = Oniguruma.Region.capture_beg region idx in
           let end_ = Oniguruma.Region.capture_end region idx in
-          Some (capture, beg + region_offset, end_ + region_offset))
+          Some (capture, beg, end_))
       captures
   in
   let captures =
@@ -250,8 +245,8 @@ let emit_scope_token scopes name ending toks =
 let emit_capture_scoped_tokens ~scopes ~name ~captures ~pos matched toks =
   let toks = { scopes; ending = pos } :: toks in
   let toks =
-    handle_captures ~region_offset:matched.region_offset matched.regex scopes
-      name pos matched.end_ matched.region captures toks
+    handle_captures matched.regex scopes name pos matched.end_ matched.region
+      captures toks
   in
   emit_scope_token scopes name matched.end_ toks
 
@@ -264,9 +259,8 @@ let emit_delim_end_captures ~prev_scopes ~delim ~pos matched toks =
     }
     :: toks
   in
-  handle_captures ~region_offset:matched.region_offset matched.regex
-    prev_scopes delim.delim_name pos matched.end_ matched.region
-    delim.delim_end_captures toks
+  handle_captures matched.regex prev_scopes delim.delim_name pos matched.end_
+    matched.region delim.delim_end_captures toks
 
 (* Tokenizes a line according to the grammar.
 
