@@ -303,7 +303,7 @@ let rec match_line ~t ~grammar ~stack ~anchor ~pos ~toks ~line rem_pats =
         in
         let stack_end_re =
           let pattern = subst_backrefs d line region in
-          Common.compile_regex
+          compile_regex
             ~error_context:("End pattern for " ^ d.delim_end)
             pattern
         in
