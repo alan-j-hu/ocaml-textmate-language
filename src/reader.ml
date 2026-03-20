@@ -84,7 +84,7 @@ and patterns_of_plist obj =
     | Some s, None ->
       Match
         {
-          pattern = compile_anchored_regex (get_string s);
+          pattern = compile_regex (get_string s);
           name = Option.map get_string (List.assoc_opt "name" obj);
           captures =
             (match List.assoc_opt "captures" obj with
@@ -113,7 +113,7 @@ and patterns_of_plist obj =
       in
       Delim
         {
-          delim_begin = compile_anchored_regex (get_string b);
+          delim_begin = compile_regex (get_string b);
           delim_end = get_string e;
           delim_patterns =
             (match List.assoc_opt "patterns" obj with

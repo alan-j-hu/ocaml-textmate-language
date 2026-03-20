@@ -9,7 +9,7 @@ type stack_elem = {
   stack_delim : delim;
   stack_enter_pos : int option;
   stack_resume_anchor : int option;
-  stack_end_re : anchored_regex;
+  stack_end_re : regex;
   stack_grammar : grammar;
   stack_repos : (string, repo_item) Hashtbl.t list;
   stack_scopes : string list;
@@ -39,19 +39,18 @@ type match_result =
   | Nonempty_match of matched_region
 
 (* Match with \G anchor handling *)
-let match_pattern anchored_regex line pos anchor =
+let match_pattern regex line pos anchor =
   let options =
-    if anchored_regex.has_g_anchor && anchor <> Some pos then
-      Oniguruma.Options.not_begin_position
+    if anchor <> Some pos then Oniguruma.Options.not_begin_position
     else Oniguruma.Options.none
   in
-  match Oniguruma.match_ anchored_regex.regex line pos options with
+  match Oniguruma.match_ regex line pos options with
   | None -> No_match
   | Some region ->
     let start = Oniguruma.Region.capture_beg region 0 in
     let end_ = Oniguruma.Region.capture_end region 0 in
     assert (start = pos);
-    let matched = { region; regex = anchored_regex.regex; end_ } in
+    let matched = { region; regex; end_ } in
     if has_progress start end_ then Nonempty_match matched
     else Empty_match matched
 
@@ -91,7 +90,7 @@ let insert_capture buf line beg end_ =
 let subst_backrefs delim line region =
   let { delim_end = regex_str; delim_begin = begin_re; _ } = delim in
   let buf = Buffer.create (String.length regex_str) in
-  let num_beg_captures = Oniguruma.num_captures begin_re.regex in
+  let num_beg_captures = Oniguruma.num_captures begin_re in
   let regex_len = String.length regex_str in
   let rec loop i escaped =
     if i < regex_len then
@@ -304,7 +303,7 @@ let rec match_line ~t ~grammar ~stack ~anchor ~pos ~toks ~line rem_pats =
         in
         let stack_end_re =
           let pattern = subst_backrefs d line region in
-          Common.compile_anchored_regex
+          Common.compile_regex
             ~error_context:("End pattern for " ^ d.delim_end)
             pattern
         in

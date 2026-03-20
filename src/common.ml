@@ -4,18 +4,17 @@ module IntMap = Map.Make (Int)
 
 type capture = { capture_name : string option; capture_patterns : rule list }
 and regex = Oniguruma.Encoding.utf8 Oniguruma.t
-and anchored_regex = { regex : regex; has_g_anchor : bool }
 
 and match_ = {
   name : string option;
-  pattern : anchored_regex;
+  pattern : regex;
   captures : (capture_key, capture) Hashtbl.t;
 }
 
 and delim_kind = End | While
 
 and delim = {
-  delim_begin : anchored_regex;
+  delim_begin : regex;
   delim_end : string; (* Either an end or a while pattern *)
   delim_patterns : rule list;
   delim_name : string option;
@@ -103,38 +102,19 @@ type yojson =
 
 exception Error of string
 
-let has_g_anchor pattern =
-  let len = String.length pattern in
-  let rec scan i in_cc =
-    match len - i with
-    | 0 | 1 -> false
-    | _ -> (
-      match pattern.[i] with
-      | '\\' when (not in_cc) && pattern.[i + 1] = 'G' -> true
-      | '\\' -> scan (i + 2) in_cc
-      | '[' -> scan (i + 1) true
-      | ']' -> scan (i + 1) false
-      | _ -> scan (i + 1) in_cc)
-  in
-  scan 0 false
-
-let compile_regex ?error_context pattern =
+let compile_regex ?error_context re =
   match
-    Oniguruma.create pattern Oniguruma.Options.none Oniguruma.Encoding.utf8
+    Oniguruma.create re Oniguruma.Options.none Oniguruma.Encoding.utf8
       Oniguruma.Syntax.default
   with
   | Ok re -> re
   | Error msg ->
     let prefix =
       match error_context with
-      | None -> pattern
-      | Some context -> context ^ ": " ^ pattern
+      | None -> re
+      | Some context -> context ^ ": " ^ re
     in
     raise (Error (prefix ^ ": " ^ msg))
-
-let compile_anchored_regex ?error_context pattern =
-  let regex = compile_regex ?error_context pattern in
-  { regex; has_g_anchor = has_g_anchor pattern }
 
 let create () =
   {
