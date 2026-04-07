@@ -20,7 +20,6 @@ jobs:
         with:
           ocaml-compiler: ${{ matrix.ocaml-compiler }}
 
-      - run: opam pin add oniguruma https://github.com/davesnx/ocaml-oniguruma.git#add-not-begin-position -n
       - run: opam install . -t
       - run: opam install ocamlformat
       - run: opam exec -- dune fmt

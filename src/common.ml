@@ -105,7 +105,7 @@ exception Error of string
 let compile_regex ?error_context re =
   match
     Oniguruma.create re Oniguruma.Options.none Oniguruma.Encoding.utf8
-      Oniguruma.Syntax.default
+      Oniguruma.Syntax.oniguruma
   with
   | Ok re -> re
   | Error msg ->
