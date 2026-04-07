@@ -217,10 +217,7 @@ let handle_captures re scopes default mat_start mat_end region captures tokens
 let line_frame grammar stack =
   match stack with
   | [] ->
-    ( [ grammar.scope_name ],
-      grammar.patterns,
-      [ grammar.repository ],
-      grammar )
+    ([ grammar.scope_name ], grammar.patterns, [ grammar.repository ], grammar)
   | se :: _ ->
     ( se.stack_scopes,
       se.stack_delim.delim_patterns,
@@ -271,8 +268,8 @@ let rec match_line ~t ~grammar ~stack ~anchor ~pos ~toks ~line rem_pats =
       | No_match | Empty_match _ -> try_pats repos cur_grammar ~k pats
       | Nonempty_match matched ->
         let toks =
-          emit_capture_scoped_tokens ~scopes:scopes ~name:m.name
-            ~captures:m.captures ~pos matched toks
+          emit_capture_scoped_tokens ~scopes ~name:m.name ~captures:m.captures
+            ~pos matched toks
         in
         match_line ~t ~grammar ~stack ~anchor ~pos:matched.end_ ~toks ~line
           (next_pats grammar stack))
@@ -285,9 +282,8 @@ let rec match_line ~t ~grammar ~stack ~anchor ~pos ~toks ~line rem_pats =
       | Empty_match ({ region; end_; _ } as matched)
       | Nonempty_match ({ region; end_; _ } as matched) -> (
         let toks =
-          emit_capture_scoped_tokens ~scopes:scopes
-            ~name:d.delim_name ~captures:d.delim_begin_captures ~pos matched
-            toks
+          emit_capture_scoped_tokens ~scopes ~name:d.delim_name
+            ~captures:d.delim_begin_captures ~pos matched toks
         in
         let child_scopes =
           add_scopes scopes [ d.delim_name; d.delim_content_name ]
@@ -347,9 +343,7 @@ let rec match_line ~t ~grammar ~stack ~anchor ~pos ~toks ~line rem_pats =
     let delim = stack_top.stack_delim in
     let end_match = match_pattern stack_top.stack_end_re line pos anchor in
     let pop_after_close matched toks =
-      let toks =
-        emit_scope_token scopes delim.delim_name matched.end_ toks
-      in
+      let toks = emit_scope_token scopes delim.delim_name matched.end_ toks in
       match_line ~t ~grammar ~stack:stack_tail
         ~anchor:stack_top.stack_resume_anchor ~pos:matched.end_ ~toks ~line
         (next_pats grammar stack_tail)
@@ -374,24 +368,21 @@ let rec match_line ~t ~grammar ~stack ~anchor ~pos ~toks ~line rem_pats =
   in
   if pos > len then
     match stack with
-    | [] ->
-      ( remove_empties ({ scopes; ending = len } :: toks),
-        stack )
+    | [] -> (remove_empties ({ scopes; ending = len } :: toks), stack)
     | se :: _ ->
       let end_scopes = add_scopes scopes [ se.stack_delim.delim_name ] in
       (remove_empties ({ scopes = end_scopes; ending = len } :: toks), stack)
   else
     let continue_without_match () =
-      match_line ~t ~grammar:cur_grammar ~stack ~anchor ~pos:(pos + 1)
-        ~toks ~line stk_pats
+      match_line ~t ~grammar:cur_grammar ~stack ~anchor ~pos:(pos + 1) ~toks
+        ~line stk_pats
     in
     match stack with
     | [] -> try_pats repos grammar rem_pats ~k:continue_without_match
     | se :: stack' -> (
       match se.stack_delim.delim_kind with
       | While ->
-        try_pats repos se.stack_grammar rem_pats
-          ~k:continue_without_match
+        try_pats repos se.stack_grammar rem_pats ~k:continue_without_match
       | End ->
         if se.stack_delim.delim_apply_end_pattern_last then
           try_pats repos se.stack_grammar rem_pats ~k:(fun () ->
