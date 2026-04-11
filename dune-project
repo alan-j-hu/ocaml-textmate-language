@@ -9,8 +9,8 @@
 (package
  (name textmate-language)
  (depends
-  (oniguruma (>= 0.1.2))
-  (ocaml (>= 4.08))
+  (oniguruma (>= 0.2))
+  (ocaml (>= 4.13))
   (plist-xml (and (>= 0.5) :with-test))
   (alcotest (and (>= 1.4) :with-test))
   (ezjsonm (and (>= 1.2) :with-test))

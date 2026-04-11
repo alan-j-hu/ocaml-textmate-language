@@ -1,11 +1,15 @@
-## Unreleased
+## 0.6.0 (April 10, 2026)
 
 - Prevent tokenizer hangs from zero-width regex loops by enforcing progress in
-  `match`, `while`, and `begin`/`end` transitions.
+  `match`, `while`, and `begin`/`end` transitions (#2), contributed by
+  @davesnx.
 - Add regression tests for zero-width begin/end and zero-width match loop
-  grammars.
+  grammars (#2), contributed by @davesnx.
 - Behavior change: zero-width rules that do not consume input are treated as
-  non-progress and skipped/advanced for safety, so they no longer emit tokens.
+  non-progress and skipped/advanced for safety, so they no longer emit tokens
+  (#2), contributed by @davesnx.
+- Update the dependency `oniguruma` to version 0.2.
+- Increase the minimum required OCaml version to 4.13.
 
 ## 0.5.0 (February 28, 2026)
 
