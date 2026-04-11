@@ -15,7 +15,7 @@ bug-reports: "https://github.com/alan-j-hu/ocaml-textmate-language/issues"
 depends: [
   "dune" {>= "2.7"}
   "oniguruma" {>= "0.2"}
-  "ocaml" {>= "4.12"}
+  "ocaml" {>= "4.13"}
   "plist-xml" {>= "0.5" & with-test}
   "alcotest" {>= "1.4" & with-test}
   "ezjsonm" {>= "1.2" & with-test}

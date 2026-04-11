@@ -8,8 +8,8 @@
 - Behavior change: zero-width rules that do not consume input are treated as
   non-progress and skipped/advanced for safety, so they no longer emit tokens
   (#2), contributed by @davesnx.
-- Update the dependency `oniguruma` to version 0.2. This change transitively
-  increases the minimum required OCaml version to 4.12.
+- Update the dependency `oniguruma` to version 0.2.
+- Increase the minimum required OCaml version to 4.13.
 
 ## 0.5.0 (February 28, 2026)
 
