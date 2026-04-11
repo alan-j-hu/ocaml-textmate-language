@@ -111,7 +111,7 @@ let match_subst_for delim line region =
   match
     Oniguruma.create
       (subst_backrefs delim line region)
-      Oniguruma.Options.none Oniguruma.Encoding.utf8 Oniguruma.Syntax.default
+      Oniguruma.Options.none Oniguruma.Encoding.utf8 Oniguruma.Syntax.oniguruma
   with
   | Error e -> error ("End pattern: " ^ delim.delim_end ^ ": " ^ e)
   | Ok re -> re

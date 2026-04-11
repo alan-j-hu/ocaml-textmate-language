@@ -1,4 +1,4 @@
-## Unreleased
+## 0.6.0 (April 10, 2026)
 
 - Prevent tokenizer hangs from zero-width regex loops by enforcing progress in
   `match`, `while`, and `begin`/`end` transitions.
@@ -6,6 +6,7 @@
   grammars.
 - Behavior change: zero-width rules that do not consume input are treated as
   non-progress and skipped/advanced for safety, so they no longer emit tokens.
+- Update the dependency `oniguruma` to version 0.2.
 
 ## 0.5.0 (February 28, 2026)
 
